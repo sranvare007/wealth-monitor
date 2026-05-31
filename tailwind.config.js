@@ -8,6 +8,21 @@ module.exports = {
   darkMode: 'class',
   theme: {
     extend: {
+      fontFamily: {
+        // Plus Jakarta Sans — all UI text (headings, labels, body)
+        'jakarta':           ['PlusJakartaSans_400Regular', 'system-ui', 'sans-serif'],
+        'jakarta-light':     ['PlusJakartaSans_300Light',    'system-ui', 'sans-serif'],
+        'jakarta-medium':    ['PlusJakartaSans_500Medium',   'system-ui', 'sans-serif'],
+        'jakarta-semibold':  ['PlusJakartaSans_600SemiBold', 'system-ui', 'sans-serif'],
+        'jakarta-bold':      ['PlusJakartaSans_700Bold',     'system-ui', 'sans-serif'],
+        'jakarta-extrabold': ['PlusJakartaSans_800ExtraBold','system-ui', 'sans-serif'],
+        // Space Grotesk — numeric values (net worth, asset figures, percentages)
+        'grotesk':           ['SpaceGrotesk_400Regular',    'system-ui', 'sans-serif'],
+        'grotesk-light':     ['SpaceGrotesk_300Light',      'system-ui', 'sans-serif'],
+        'grotesk-medium':    ['SpaceGrotesk_500Medium',     'system-ui', 'sans-serif'],
+        'grotesk-semibold':  ['SpaceGrotesk_600SemiBold',   'system-ui', 'sans-serif'],
+        'grotesk-bold':      ['SpaceGrotesk_700Bold',       'system-ui', 'sans-serif'],
+      },
       colors: {
         // Semantic: net-worth change indicators (always pair with icon/label)
         'wm-positive': '#10B981',

@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, useColorScheme,
+  View, Text, TouchableOpacity, StyleSheet,
 } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,7 +8,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Icon } from './Icon';
 import type { IconName } from './Icon';
 import { useAppState } from '../../store/AppContext';
-import { ACCENTS } from '../../constants/theme';
+import { useTheme } from '../../hooks/useTheme';
+import { FONTS } from '../../constants/fonts';
 
 type TabDef = { route: string; icon: IconName; label: string };
 
@@ -21,20 +22,20 @@ const TABS: TabDef[] = [
 
 export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const { openAddSheet, accentKey } = useAppState();
-  const accent = ACCENTS[accentKey];
+  const { openAddSheet } = useAppState();
+  const { theme, accent, isDark } = useTheme();
 
   const bgColor = isDark ? 'rgba(11,14,20,0.9)' : 'rgba(255,255,255,0.92)';
-  const borderColor = isDark ? 'rgba(255,255,255,0.08)' : '#E8EBEF';
+  const borderColor = theme.line;
   const activeColor = accent.solid;
-  const inactiveColor = isDark ? '#5B6678' : '#94A3B8';
+  const inactiveColor = theme.faint;
 
   const bottomPad = Math.max(insets.bottom, 8);
+  // Grow the root to include the nav pill area so icons keep full 86px of breathing room
+  const rootHeight = TAB_HEIGHT + 24 + bottomPad;
 
   return (
-    <View style={[styles.root, { paddingBottom: bottomPad }]}>
+    <View style={[styles.root, { paddingBottom: bottomPad, height: rootHeight }]}>
       {/* Background fill */}
       <View style={[styles.bg, { backgroundColor: bgColor, borderTopColor: borderColor }]} />
 
@@ -121,7 +122,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 10.5,
-    fontWeight: '700',
+    fontFamily: FONTS.jakartaBold,
   },
   fabGap: {
     width: FAB_SIZE + 10,

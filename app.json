@@ -31,7 +31,8 @@
           "image": "./assets/splash-icon.png"
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-font"
     ]
   }
 }

@@ -1,4 +1,3 @@
-import { useColorScheme } from 'react-native';
 import { makeTheme, ACCENTS, type ThemeColors, type AccentDef } from '../constants/theme';
 import { useAppState } from '../store/AppContext';
 
@@ -9,12 +8,10 @@ type UseThemeResult = {
 };
 
 export function useTheme(): UseThemeResult {
-  const colorScheme = useColorScheme();
-  const { accentKey } = useAppState();
-  const isDark = colorScheme === 'dark';
+  const { accentKey, darkMode } = useAppState();
   return {
-    theme: makeTheme(isDark),
+    theme: makeTheme(darkMode),
     accent: ACCENTS[accentKey],
-    isDark,
+    isDark: darkMode,
   };
 }

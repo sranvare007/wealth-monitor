@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   ScrollView, View, Text, TouchableOpacity, TextInput, StyleSheet,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppState } from '../../store/AppContext';
 import { useTheme } from '../../hooks/useTheme';
 import { Icon } from '../../components/common/Icon';
@@ -10,12 +10,13 @@ import { CATEGORIES, CAT } from '../../data/categories';
 import { computeTotals, assetBaseValue } from '../../utils/networth';
 import { formatMoney } from '../../utils/currency';
 import { relativeDay } from '../../utils/date';
-
-const BOTTOM_PAD = 100;
+import { FONTS } from '../../constants/fonts';
 
 export function AssetsScreen() {
   const { assets, baseCurrency, openAddSheet, openEditSheet, setDeleteTarget } = useAppState();
   const { theme, accent } = useTheme();
+  const insets = useSafeAreaInsets();
+  const bottomPad = 86 + Math.max(insets.bottom, 8) + 16;
   const [query, setQuery] = useState('');
 
   const totals = useMemo(() => computeTotals(assets, baseCurrency), [assets, baseCurrency]);
@@ -36,10 +37,10 @@ export function AssetsScreen() {
     .filter(g => g.items.length > 0);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: theme.bg }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: BOTTOM_PAD, paddingHorizontal: 16 }}
+        contentContainerStyle={{ paddingBottom: bottomPad, paddingHorizontal: 16 }}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -147,27 +148,27 @@ export function AssetsScreen() {
 
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 4, marginBottom: 16, marginHorizontal: 4 },
-  title:  { fontSize: 28, fontWeight: '800', letterSpacing: -0.6 },
-  count:  { fontSize: 13, fontWeight: '700' },
+  title:  { fontSize: 28, letterSpacing: -0.6, fontFamily: FONTS.jakartaExtraBold },
+  count:  { fontSize: 13, fontFamily: FONTS.jakartaBold },
 
   searchBar:   { flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, marginBottom: 18 },
-  searchInput: { flex: 1, fontSize: 15.5, padding: 0 },
-  noResult:    { textAlign: 'center', fontSize: 14, paddingVertical: 40 },
+  searchInput: { flex: 1, fontSize: 15.5, padding: 0, fontFamily: FONTS.jakarta },
+  noResult:    { textAlign: 'center', fontSize: 14, paddingVertical: 40, fontFamily: FONTS.jakarta },
 
   catHeader:     { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 4, marginBottom: 9 },
   catIcon:       { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  catLabel:      { fontSize: 14.5, fontWeight: '800' },
+  catLabel:      { fontSize: 14.5, fontFamily: FONTS.jakartaExtraBold },
   catCount:      { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
-  catCountText:  { fontSize: 12.5, fontWeight: '700' },
-  catTotal:      { fontSize: 14, fontWeight: '800' },
+  catCountText:  { fontSize: 12.5, fontFamily: FONTS.jakartaBold },
+  catTotal:      { fontSize: 14, fontFamily: FONTS.groteskBold },
 
   card:     { borderRadius: 22, borderWidth: 1, overflow: 'hidden' },
   assetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderBottomWidth: StyleSheet.hairlineWidth },
-  assetName:  { fontSize: 15.5, fontWeight: '700' },
-  assetMeta:  { fontSize: 12.5, marginTop: 2 },
-  assetValue: { fontSize: 15.5, fontWeight: '800' },
-  assetOrig:  { fontSize: 12, marginTop: 1 },
+  assetName:  { fontSize: 15.5, fontFamily: FONTS.jakartaBold },
+  assetMeta:  { fontSize: 12.5, marginTop: 2, fontFamily: FONTS.jakarta },
+  assetValue: { fontSize: 15.5, fontFamily: FONTS.groteskBold },
+  assetOrig:  { fontSize: 12, marginTop: 1, fontFamily: FONTS.grotesk },
 
   addBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderStyle: 'dashed', borderRadius: 16, padding: 15 },
-  addBtnText: { fontSize: 15, fontWeight: '700' },
+  addBtnText: { fontSize: 15, fontFamily: FONTS.jakartaBold },
 });

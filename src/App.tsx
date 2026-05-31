@@ -2,22 +2,28 @@ import { DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createURL } from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import * as React from 'react';
-import { useColorScheme } from 'react-native';
+import { View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider } from './store/AppContext';
 import { Navigation } from './navigation';
+import { AppOverlays } from './components/common/AppOverlays';
+import { useAppFonts } from './hooks/useFonts';
+import { useTheme } from './hooks/useTheme';
 
 SplashScreen.preventAutoHideAsync();
 
 const prefix = createURL('/');
 
-export function App() {
-  const colorScheme = useColorScheme();
-  const theme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
+// Inner shell: has access to AppContext via useTheme
+function AppShell({ fontsLoaded }: { fontsLoaded: boolean }) {
+  const { isDark } = useTheme();
+
+  if (!fontsLoaded) return null;
 
   return (
-    <AppProvider>
+    <View style={{ flex: 1 }}>
       <Navigation
-        theme={theme}
+        theme={isDark ? DarkTheme : DefaultTheme}
         linking={{
           enabled: 'auto',
           prefixes: [prefix],
@@ -26,6 +32,19 @@ export function App() {
           SplashScreen.hideAsync();
         }}
       />
-    </AppProvider>
+      <AppOverlays />
+    </View>
+  );
+}
+
+export function App() {
+  const [fontsLoaded] = useAppFonts();
+
+  return (
+    <SafeAreaProvider>
+      <AppProvider>
+        <AppShell fontsLoaded={fontsLoaded} />
+      </AppProvider>
+    </SafeAreaProvider>
   );
 }

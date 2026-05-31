@@ -15,6 +15,7 @@ type AppContextValue = {
   hideBalance: boolean;
   onboardingDone: boolean;
   accentKey: AccentKey;
+  darkMode: boolean;
 
   // ── Data mutations ────────────────────────────────────────────────────────
   saveAsset: (asset: Omit<Asset, 'id' | 'updated'> & { id?: string }) => void;
@@ -22,7 +23,9 @@ type AppContextValue = {
   setBaseCurrency: (code: string) => void;
   setHideBalance: (hide: boolean) => void;
   completeOnboarding: (currency: string) => void;
+  replayOnboarding: () => void;
   setAccentKey: (key: AccentKey) => void;
+  setDarkMode: (dark: boolean) => void;
   resetDemo: () => void;
   clearAll: () => void;
 
@@ -30,11 +33,14 @@ type AppContextValue = {
   addEditOpen: boolean;
   editingAsset: Asset | null;
   deleteTarget: Asset | null;
+  currencyPickerOpen: boolean;
   openAddSheet: () => void;
   openEditSheet: (asset: Asset) => void;
   closeSheet: () => void;
   setDeleteTarget: (asset: Asset | null) => void;
   confirmDelete: () => void;
+  openCurrencyPicker: () => void;
+  closeCurrencyPicker: () => void;
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -53,11 +59,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [hideBalance, setHideBalance] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(false);
   const [accentKey, setAccentKey] = useState<AccentKey>('indigo');
+  const [darkMode, setDarkMode] = useState(false);
 
   // Sheet state
   const [addEditOpen, setAddEditOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Asset | null>(null);
+  const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -65,7 +73,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const nw = computeTotals(nextAssets, base).netWorth;
     setSnapshots(prev => {
       const last = prev[prev.length - 1];
-      // Deduplicate: skip if net worth unchanged within last minute
       if (last && Math.abs(last.v - nw) < 0.5 && Date.now() - last.t < 60_000) return prev;
       return [...prev, { id: `s_${Date.now()}`, t: Date.now(), v: Math.round(nw) }];
     });
@@ -107,6 +114,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setOnboardingDone(true);
   }
 
+  function replayOnboarding() {
+    setOnboardingDone(false);
+  }
+
   function resetDemo() {
     const a = seedAssets();
     setAssets(a);
@@ -128,13 +139,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (deleteTarget) removeAsset(deleteTarget.id);
   }
 
+  function openCurrencyPicker() { setCurrencyPickerOpen(true); }
+  function closeCurrencyPicker() { setCurrencyPickerOpen(false); }
+
   return (
     <AppContext.Provider value={{
-      assets, snapshots, baseCurrency, hideBalance, onboardingDone, accentKey,
-      saveAsset, removeAsset, setBaseCurrency, setHideBalance, completeOnboarding,
-      setAccentKey, resetDemo, clearAll,
-      addEditOpen, editingAsset, deleteTarget,
+      assets, snapshots, baseCurrency, hideBalance, onboardingDone, accentKey, darkMode,
+      saveAsset, removeAsset, setBaseCurrency, setHideBalance, completeOnboarding, replayOnboarding,
+      setAccentKey, setDarkMode, resetDemo, clearAll,
+      addEditOpen, editingAsset, deleteTarget, currencyPickerOpen,
       openAddSheet, openEditSheet, closeSheet, setDeleteTarget, confirmDelete,
+      openCurrencyPicker, closeCurrencyPicker,
     }}>
       {children}
     </AppContext.Provider>
