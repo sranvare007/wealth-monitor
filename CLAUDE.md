@@ -16,9 +16,85 @@ React Native · Expo 55 · TypeScript 5.9 · React Navigation 7
 | Navigation | React Navigation (static API) | 7.x |
 | Local DB | expo-sqlite | latest for Expo 55 |
 | Charts | react-native-gifted-charts | TBD — validate with UX |
+| Styling | NativeWind v4 + Tailwind CSS v3 | 4.2.x / 3.4.x |
 | State | React Context + useReducer (no external lib unless justified) | — |
 
 Always check https://docs.expo.dev/versions/v55.0.0/ before using any Expo API.
+
+---
+
+## Styling — NativeWind v4
+
+NativeWind v4 is the primary styling system. **Prefer `className` over `StyleSheet.create` everywhere possible.**
+
+### Setup files (do not remove or rename)
+
+| File | Purpose |
+|---|---|
+| `tailwind.config.js` | Content paths + `nativewind/preset` + custom tokens |
+| `global.css` | Tailwind directives — imported once in `index.tsx` |
+| `babel.config.js` | `babel-preset-expo` with `jsxImportSource: 'nativewind'` + `nativewind/babel` preset |
+| `metro.config.js` | `withNativeWind(config, { input: './global.css' })` wrapper |
+| `nativewind-env.d.ts` | `/// <reference types="nativewind/types" />` — enables `className` prop in TS |
+
+### Rules
+
+1. **`className` first** — use Tailwind utilities for all layout, spacing, colour, typography, and border work.
+2. **Custom design tokens live in `tailwind.config.js`** under `theme.extend`. Never hardcode hex values inline.
+3. **Semantic colour tokens** (defined in `tailwind.config.js`):
+   - `wm-positive` — green, gains / positive change
+   - `wm-negative` — red, losses / liabilities
+   - `wm-neutral` — grey, no change
+   - `wm-liability` — muted red, liability donut segment
+4. **`StyleSheet.create` is a last resort** — only for values that Tailwind cannot express (e.g. arbitrary chart dimensions, `react-native-reanimated` animated style objects).
+5. **No inline `style` prop** for values that Tailwind can cover. Never `style={{ color: '#dc2626' }}` when `className="text-wm-negative"` works.
+6. **Dark mode** — use the `dark:` variant (`dark:bg-gray-900`). Dark mode is driven by `useColorScheme()` already wired in `App.tsx`.
+7. **Conditional classes** — use template literals or a helper like `clsx`/`cn`; never build class strings with string concatenation:
+
+   ```tsx
+   // correct
+   import clsx from 'clsx';
+   <Text className={clsx('text-base font-semibold', isPositive ? 'text-wm-positive' : 'text-wm-negative')} />
+
+   // wrong — Tailwind's JIT cannot detect dynamically concatenated strings
+   <Text className={`text-${isPositive ? 'green' : 'red'}-600`} />
+   ```
+
+8. **Arbitrary values** — use `[]` syntax sparingly and only for one-off values that genuinely don't belong in the theme: `w-[44px]` for a touch-target minimum.
+9. **Accessibility pairing** — colour utility classes must always be accompanied by an icon or label (WCAG: colour alone is insufficient). `className="text-wm-negative"` must coexist with a down-arrow icon or "Loss" label.
+10. **NativeWind does not support all Tailwind plugins** — avoid `@tailwindcss/forms`, `@tailwindcss/typography`, and CSS-only plugins. Stick to core utilities.
+
+### Approved patterns
+
+```tsx
+// Screen root
+<SafeAreaView className="flex-1 bg-white dark:bg-gray-950">
+
+// Card
+<View className="rounded-2xl bg-white dark:bg-gray-900 p-4 shadow-sm">
+
+// Net-worth headline
+<Text className="text-3xl font-bold text-gray-900 dark:text-white">
+
+// Positive / negative delta — always pair colour with icon
+<Text className="text-sm font-medium text-wm-positive">↑ ₹12,500 (3.2%)</Text>
+<Text className="text-sm font-medium text-wm-negative">↓ ₹4,000 (1.1%)</Text>
+
+// Disabled button
+<TouchableOpacity
+  disabled={!isValid}
+  className={clsx('rounded-xl px-6 py-3', isValid ? 'bg-indigo-600' : 'bg-gray-300')}
+>
+
+// Minimum 44 pt touch target
+<TouchableOpacity className="min-h-[44px] min-w-[44px] items-center justify-center">
+```
+
+### When `StyleSheet.create` is still acceptable
+
+- Animated style objects driven by `useAnimatedStyle` (react-native-reanimated requires plain objects).
+- Chart library props that accept a numeric dimension, not a style string.
+- One-off pixel values that would be an arbitrary value used only once and are not semantic.
 
 ---
 
@@ -161,8 +237,8 @@ declare module '@react-navigation/core' {
 
 ## UI & Component Patterns
 
-- **No inline styles.** Use `StyleSheet.create` for all styles.
-- Style objects live in the same file as the component unless shared across multiple components.
+- **Use NativeWind `className` prop as the primary styling method.** Reach for `StyleSheet.create` only when a style cannot be expressed with Tailwind utilities (e.g. complex transforms, chart-specific layout values).
+- Never mix `className` and `style` on the same element for the same property — pick one owner per property.
 - Use `react-native-safe-area-context` `SafeAreaView` as the root of every screen.
 - All monetary values on screen are formatted through a single utility: `formatCurrency(value, currency, locale): string`. Support abbreviated Indian notation (₹12.5L, ₹1.2Cr) as well as international (PRD §8.3, Q7).
 - Charts provide text alternatives — all chart data must also be visible in a table (PRD §7.4).
