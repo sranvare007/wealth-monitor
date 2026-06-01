@@ -1,3 +1,5 @@
+import type { RecurringContributionFrequency } from '../types';
+
 export type Period = { id: string; label: string; days: number };
 
 export const PERIODS: Period[] = [
@@ -32,4 +34,16 @@ export function relativeDay(t: number): string {
   if (diff < 30)  return `${Math.floor(diff / 7)}w ago`;
   if (diff < 365) return `${Math.floor(diff / 30)}mo ago`;
   return `${Math.floor(diff / 365)}y ago`;
+}
+
+export function advanceByFrequency(ts: number, frequency: RecurringContributionFrequency): number {
+  const d = new Date(ts);
+  switch (frequency) {
+    case 'DAILY':     d.setDate(d.getDate() + 1); break;
+    case 'WEEKLY':    d.setDate(d.getDate() + 7); break;
+    case 'MONTHLY':   d.setMonth(d.getMonth() + 1); break;
+    case 'QUARTERLY': d.setMonth(d.getMonth() + 3); break;
+    case 'YEARLY':    d.setFullYear(d.getFullYear() + 1); break;
+  }
+  return d.getTime();
 }

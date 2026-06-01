@@ -9,7 +9,9 @@ export type AssetCategory =
   | 'custom'
   | 'loans';
 
-export type SnapshotTrigger = 'ASSET_ADDED' | 'ASSET_UPDATED' | 'ASSET_DELETED';
+export type SnapshotTrigger = 'ASSET_ADDED' | 'ASSET_UPDATED' | 'ASSET_DELETED' | 'CONTRIBUTION_APPLIED';
+
+export type RecurringContributionFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
 
 export type AccentKey = 'indigo' | 'violet' | 'emerald' | 'ocean' | 'sunset';
 
@@ -21,6 +23,12 @@ export type Asset = {
   currency: string; // ISO 4217
   note: string;
   updated: number;  // Unix ms timestamp
+  // Recurring Contribution — optional; absent/0 means disabled
+  recurringContributionEnabled?: number;
+  recurringContributionAmount?: number | null;
+  recurringContributionFrequency?: RecurringContributionFrequency | null;
+  recurringContributionNextDue?: number | null;      // Unix ms timestamp
+  recurringContributionLastApplied?: number | null;  // Unix ms timestamp
 };
 
 export type Snapshot = {

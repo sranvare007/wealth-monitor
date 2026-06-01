@@ -1,5 +1,5 @@
 import React, {
-  createContext, useContext, useState, useEffect,
+  createContext, useContext, useState, useEffect, useRef,
 } from 'react';
 import type { Asset, Snapshot, AccentKey } from '../types';
 import { seedAssets, seedSnapshots } from '../data/seed';
@@ -9,14 +9,20 @@ import { getAllAssets, upsertAsset, deleteAsset as dbDeleteAsset, clearAssets } 
 import { getAllSnapshots, insertSnapshot, clearSnapshots } from '../db/queries/snapshots';
 import { getSetting, setSetting } from '../db/queries/settings';
 import { generateId } from '../utils/uuid';
+import { applyDueContributions } from '../services/recurringContributionService';
+import {
+  initNotifications,
+  scheduleContributionReminder,
+  cancelContributionReminder,
+  cancelAllContributionReminders,
+  notifyContributionApplied,
+} from '../services/notificationService';
+import { useAppForeground } from '../hooks/useAppForeground';
 
 // ─── Context shape ────────────────────────────────────────────────────────────
 
 type AppContextValue = {
-  // Async load state — true while reading initial data from DB
   loading: boolean;
-
-  // ── Data ──────────────────────────────────────────────────────────────────
   assets: Asset[];
   snapshots: Snapshot[];
   baseCurrency: string;
@@ -24,8 +30,6 @@ type AppContextValue = {
   onboardingDone: boolean;
   accentKey: AccentKey;
   darkMode: boolean;
-
-  // ── Data mutations ────────────────────────────────────────────────────────
   saveAsset: (asset: Omit<Asset, 'id' | 'updated'> & { id?: string }) => void;
   removeAsset: (assetId: string) => void;
   setBaseCurrency: (code: string) => void;
@@ -36,8 +40,6 @@ type AppContextValue = {
   setDarkMode: (dark: boolean) => void;
   resetDemo: () => void;
   clearAll: () => void;
-
-  // ── Sheet / overlay UI state ──────────────────────────────────────────────
   addEditOpen: boolean;
   editingAsset: Asset | null;
   deleteTarget: Asset | null;
@@ -56,7 +58,7 @@ const AppContext = createContext<AppContextValue | null>(null);
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const db = useDatabase(); // non-null: DatabaseProvider blocks until ready
+  const db = useDatabase();
 
   const [loading, setLoading] = useState(true);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -67,11 +69,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [accentKey, setAccentKeyState] = useState<AccentKey>('indigo');
   const [darkMode, setDarkModeState] = useState(false);
 
-  // Sheet state
   const [addEditOpen, setAddEditOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Asset | null>(null);
   const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
+
+  // Refs so the foreground callback always sees current state without re-registering
+  const assetsRef = useRef(assets);
+  assetsRef.current = assets;
+  const baseCurrencyRef = useRef(baseCurrency);
+  baseCurrencyRef.current = baseCurrency;
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
 
   // ── Load from DB on mount ─────────────────────────────────────────────────
 
@@ -91,30 +100,76 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getSetting(db, 'DARK_MODE'),
       ]);
 
-      setAssets(dbAssets);
-      setSnapshots(dbSnapshots);
+      // Only ask permission on open for existing users who have already onboarded.
+      // New users get asked at the end of the onboarding flow instead.
+      if (onboardingDoneSetting === 'true') {
+        await initNotifications().catch(() => {});
+      }
+
+      const base = baseCurrencySetting ?? 'INR';
+
+      // Apply any overdue contributions before setting initial state
+      const rcResult = await applyDueContributions(db, dbAssets, base).catch(
+        () => ({ applications: [], newSnapshots: [] }),
+      );
+
+      const finalAssets =
+        rcResult.applications.length > 0
+          ? dbAssets.map(a => {
+              const app = rcResult.applications.find(ap => ap.asset.id === a.id);
+              return app ? app.asset : a;
+            })
+          : dbAssets;
+
+      setAssets(finalAssets);
+      setSnapshots([...dbSnapshots, ...rcResult.newSnapshots]);
       if (baseCurrencySetting) setBaseCurrencyState(baseCurrencySetting);
       setHideBalanceState(hideBalanceSetting === 'true');
       setOnboardingDone(onboardingDoneSetting === 'true');
       if (accentKeySetting) setAccentKeyState(accentKeySetting as AccentKey);
       setDarkModeState(darkModeSetting === 'true');
       setLoading(false);
+
+      for (const app of rcResult.applications) {
+        notifyContributionApplied(app.asset, app.totalAdded, app.periods).catch(() => {});
+        scheduleContributionReminder(app.asset).catch(() => {});
+      }
     }
     load();
   }, [db]);
+
+  // ── Apply contributions when app comes to foreground ──────────────────────
+
+  useAppForeground(() => {
+    if (loadingRef.current) return;
+    const currentAssets = assetsRef.current;
+    const currentBase = baseCurrencyRef.current;
+
+    applyDueContributions(db, currentAssets, currentBase)
+      .then(result => {
+        if (result.applications.length === 0) return;
+        setAssets(prev =>
+          prev.map(a => {
+            const app = result.applications.find(ap => ap.asset.id === a.id);
+            return app ? app.asset : a;
+          }),
+        );
+        setSnapshots(prev => [...prev, ...result.newSnapshots]);
+        for (const app of result.applications) {
+          notifyContributionApplied(app.asset, app.totalAdded, app.periods).catch(() => {});
+          scheduleContributionReminder(app.asset).catch(() => {});
+        }
+      })
+      .catch(() => {});
+  });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   function buildSnapshot(nextAssets: Asset[], base: string, current: Snapshot[]): Snapshot | null {
     const nw = computeTotals(nextAssets, base).netWorth;
     const last = current[current.length - 1];
-    // Deduplicate: skip if net worth barely changed within the last minute
     if (last && Math.abs(last.v - nw) < 0.5 && Date.now() - last.t < 60_000) return null;
-    return {
-      id: generateId(),
-      t: Date.now(),
-      v: Math.round(nw),
-    };
+    return { id: generateId(), t: Date.now(), v: Math.round(nw) };
   }
 
   // ── Mutations ─────────────────────────────────────────────────────────────
@@ -140,6 +195,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     db.withTransactionAsync(async () => {
       await upsertAsset(db, saved);
       if (snap) await insertSnapshot(db, snap);
+    }).then(() => {
+      if (saved.recurringContributionEnabled === 1 && saved.recurringContributionNextDue) {
+        scheduleContributionReminder(saved).catch(() => {});
+      } else {
+        cancelContributionReminder(saved.id).catch(() => {});
+      }
     }).catch(console.error);
   }
 
@@ -156,6 +217,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     db.withTransactionAsync(async () => {
       await dbDeleteAsset(db, assetId);
       if (snap) await insertSnapshot(db, snap);
+    }).then(() => {
+      cancelContributionReminder(assetId).catch(() => {});
     }).catch(console.error);
   }
 
@@ -172,6 +235,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   function completeOnboarding(currency: string) {
     setBaseCurrencyState(currency);
     setOnboardingDone(true);
+    initNotifications().catch(() => {});
     Promise.all([
       setSetting(db, 'BASE_CURRENCY', currency),
       setSetting(db, 'ONBOARDING_DONE', 'true'),
@@ -206,6 +270,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setEditingAsset(null);
     setDeleteTarget(null);
 
+    cancelAllContributionReminders().catch(() => {});
+
     db.withTransactionAsync(async () => {
       await clearAssets(db);
       await clearSnapshots(db);
@@ -220,6 +286,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const snap: Snapshot = { id: generateId(), t: Date.now(), v: 0 };
     setAssets([]);
     setSnapshots([snap]);
+
+    cancelAllContributionReminders().catch(() => {});
 
     db.withTransactionAsync(async () => {
       await clearAssets(db);
