@@ -13,22 +13,33 @@ import { relativeDay } from '../../utils/date';
 import { FONTS } from '../../constants/fonts';
 
 export function AssetsScreen() {
-  const { assets, baseCurrency, openAddSheet, openEditSheet, setDeleteTarget } = useAppState();
+  const { assets, baseCurrency, openAddSheet, openEditSheet, setDeleteTarget, customCategories } = useAppState();
   const { theme, accent } = useTheme();
   const insets = useSafeAreaInsets();
   const bottomPad = 86 + Math.max(insets.bottom, 8) + 16;
   const [query, setQuery] = useState('');
 
-  const totals = useMemo(() => computeTotals(assets, baseCurrency), [assets, baseCurrency]);
+  const allCategories = useMemo(
+    () => [...CATEGORIES, ...customCategories],
+    [customCategories],
+  );
+  const catLookup = useMemo(
+    () => Object.fromEntries(allCategories.map(c => [c.id, c])),
+    [allCategories],
+  );
+  const totals = useMemo(
+    () => computeTotals(assets, baseCurrency, customCategories),
+    [assets, baseCurrency, customCategories],
+  );
 
   const filtered = query
     ? assets.filter(a =>
         a.name.toLowerCase().includes(query.toLowerCase()) ||
-        (CAT[a.cat]?.label ?? '').toLowerCase().includes(query.toLowerCase()),
+        (catLookup[a.cat]?.label ?? '').toLowerCase().includes(query.toLowerCase()),
       )
     : assets;
 
-  const groups = CATEGORIES
+  const groups = allCategories
     .map(c => ({
       cat: c,
       items: filtered.filter(a => a.cat === c.id),

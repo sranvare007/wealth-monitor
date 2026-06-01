@@ -23,12 +23,13 @@ export function SettingsScreen() {
     resetDemo, clearAll,
     openCurrencyPicker,
     replayOnboarding,
+    customCategories, openCategoriesSheet,
   } = useAppState();
   const { theme, accent } = useTheme();
   const insets = useSafeAreaInsets();
   const bottomPad = 86 + Math.max(insets.bottom, 8) + 16;
 
-  const totals = computeTotals(assets, baseCurrency);
+  const totals = computeTotals(assets, baseCurrency, customCategories);
 
   function handleClearAll() {
     Alert.alert(
@@ -157,7 +158,13 @@ export function SettingsScreen() {
         {/* ── Preferences ───────────────────────────────────────────────── */}
         <Text style={[styles.sectionLabel, { color: theme.sub }]}>PREFERENCES</Text>
         <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.line }]}>
-          <Row label="Base currency" detail={baseCurrency} onPress={openCurrencyPicker} last />
+          <Row label="Base currency" detail={baseCurrency} onPress={openCurrencyPicker} />
+          <Row
+            label="Categories"
+            detail={customCategories.length > 0 ? `${customCategories.length} custom` : 'Add your own'}
+            onPress={openCategoriesSheet}
+            last
+          />
         </View>
 
         {/* ── Your data ─────────────────────────────────────────────────── */}

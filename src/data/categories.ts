@@ -1,4 +1,5 @@
-import type { AssetCategory, Category } from '../types';
+import type { Category } from '../types';
+import type { IconName } from '../components/common/Icon';
 
 export const CATEGORIES: Category[] = [
   { id: 'cash',       label: 'Cash & Bank',          short: 'Cash',     color: '#10B981', icon: 'bank' },
@@ -12,4 +13,26 @@ export const CATEGORIES: Category[] = [
 
 export const CAT = Object.fromEntries(
   CATEGORIES.map(c => [c.id, c]),
-) as Record<AssetCategory, Category>;
+) as Record<string, Category>;
+
+// Color palette shown in the category form color picker (16 swatches, 8 per row)
+export const CATEGORY_COLOR_PALETTE = [
+  '#EF4444', '#F97316', '#EAB308', '#22C55E',
+  '#10B981', '#14B8A6', '#06B6D4', '#3B82F6',
+  '#6366F1', '#8B5CF6', '#A855F7', '#EC4899',
+  '#F43F5E', '#64748B', '#7C3AED', '#0EA5E9',
+];
+
+// Default color used when cycling (kept for backward compat with DB)
+export const CUSTOM_CAT_COLORS = CATEGORY_COLOR_PALETTE;
+
+// Icons available in the custom category icon picker (5-column grid)
+export const CATEGORY_PICKER_ICONS: IconName[] = [
+  'wallet', 'bank',       'coin',       'trending',  'gem',
+  'home',   'list',       'car',        'plane',     'globe',
+  'briefcase','graduation','grid',      'laptop',    'phone',
+  'watch',  'camera',     'music',      'palette',   'gift',
+  'cart',   'tag',        'tv',         'coffee',    'heart',
+  'shield', 'umbrella',   'key',        'leaf',      'plus',
+  'crown',  'flame',      'bolt',       'star',      'sparkle',
+];

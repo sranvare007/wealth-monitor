@@ -1,13 +1,6 @@
 // ─── Domain types ────────────────────────────────────────────────────────────
 
-export type AssetCategory =
-  | 'cash'
-  | 'stocks'
-  | 'realestate'
-  | 'crypto'
-  | 'gold'
-  | 'custom'
-  | 'loans';
+export type AssetCategory = string;
 
 export type SnapshotTrigger = 'ASSET_ADDED' | 'ASSET_UPDATED' | 'ASSET_DELETED' | 'CONTRIBUTION_APPLIED';
 
@@ -59,7 +52,7 @@ export type Totals = {
   assetsTotal: number;
   liabTotal: number;
   netWorth: number;
-  byCat: Record<AssetCategory, number>;
+  byCat: Record<string, number>;
 };
 
 export type DistributionSegment = Category & { value: number };

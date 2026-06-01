@@ -5,6 +5,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { AddEditSheet } from './AddEditSheet';
 import { DeleteConfirm } from './DeleteConfirm';
 import { CurrencyPicker } from './CurrencyPicker';
+import { CategoriesSheet } from './CategoriesSheet';
 import { OnboardingScreen } from '../../navigation/screens/Onboarding';
 
 // Renders all full-screen overlays above the main navigation.
@@ -17,6 +18,7 @@ export function AppOverlays() {
     <>
       <AddEditSheet />
       <CurrencyPicker />
+      <CategoriesSheet />
       {deleteTarget && <DeleteConfirm />}
 
       {/* Onboarding overlay — rendered last so it sits on top of everything */}

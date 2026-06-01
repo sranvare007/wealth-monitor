@@ -1,13 +1,19 @@
 import React, {
   createContext, useContext, useState, useEffect, useRef,
 } from 'react';
-import type { Asset, Snapshot, AccentKey } from '../types';
+import type { Asset, Snapshot, AccentKey, Category } from '../types';
 import { seedAssets, seedSnapshots } from '../data/seed';
 import { computeTotals } from '../utils/networth';
 import { useDatabase } from '../db/DatabaseContext';
 import { getAllAssets, upsertAsset, deleteAsset as dbDeleteAsset, clearAssets } from '../db/queries/assets';
 import { getAllSnapshots, insertSnapshot, clearSnapshots } from '../db/queries/snapshots';
 import { getSetting, setSetting } from '../db/queries/settings';
+import {
+  getAllCustomCategories,
+  insertCustomCategory,
+  updateCustomCategory as dbUpdateCustomCategory,
+  deleteCustomCategory as dbDeleteCustomCategory,
+} from '../db/queries/custom_categories';
 import { generateId } from '../utils/uuid';
 import { applyDueContributions } from '../services/recurringContributionService';
 import {
@@ -30,6 +36,7 @@ type AppContextValue = {
   onboardingDone: boolean;
   accentKey: AccentKey;
   darkMode: boolean;
+  customCategories: Category[];
   saveAsset: (asset: Omit<Asset, 'id' | 'updated'> & { id?: string }) => void;
   removeAsset: (assetId: string) => void;
   setBaseCurrency: (code: string) => void;
@@ -40,10 +47,14 @@ type AppContextValue = {
   setDarkMode: (dark: boolean) => void;
   resetDemo: () => void;
   clearAll: () => void;
+  saveCustomCategory: (data: { id?: string; label: string; icon: string; color: string; liability: boolean }) => void;
+  removeCustomCategory: (catId: string) => void;
   addEditOpen: boolean;
   editingAsset: Asset | null;
   deleteTarget: Asset | null;
   currencyPickerOpen: boolean;
+  categoriesSheetOpen: boolean;
+  categoriesSheetForCreate: boolean;
   openAddSheet: () => void;
   openEditSheet: (asset: Asset) => void;
   closeSheet: () => void;
@@ -51,6 +62,9 @@ type AppContextValue = {
   confirmDelete: () => void;
   openCurrencyPicker: () => void;
   closeCurrencyPicker: () => void;
+  openCategoriesSheet: () => void;
+  openCategoriesSheetForCreate: () => void;
+  closeCategoriesSheet: () => void;
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -69,10 +83,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [accentKey, setAccentKeyState] = useState<AccentKey>('indigo');
   const [darkMode, setDarkModeState] = useState(false);
 
+  const [customCategories, setCustomCategories] = useState<Category[]>([]);
   const [addEditOpen, setAddEditOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Asset | null>(null);
   const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
+  const [categoriesSheetOpen, setCategoriesSheetOpen] = useState(false);
+  const [categoriesSheetForCreate, setCategoriesSheetForCreate] = useState(false);
 
   // Refs so the foreground callback always sees current state without re-registering
   const assetsRef = useRef(assets);
@@ -90,6 +107,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         dbAssets, dbSnapshots,
         baseCurrencySetting, hideBalanceSetting,
         onboardingDoneSetting, accentKeySetting, darkModeSetting,
+        dbCustomCats,
       ] = await Promise.all([
         getAllAssets(db),
         getAllSnapshots(db),
@@ -98,6 +116,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getSetting(db, 'ONBOARDING_DONE'),
         getSetting(db, 'ACCENT_KEY'),
         getSetting(db, 'DARK_MODE'),
+        getAllCustomCategories(db),
       ]);
 
       // Only ask permission on open for existing users who have already onboarded.
@@ -128,6 +147,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setOnboardingDone(onboardingDoneSetting === 'true');
       if (accentKeySetting) setAccentKeyState(accentKeySetting as AccentKey);
       setDarkModeState(darkModeSetting === 'true');
+      setCustomCategories(dbCustomCats);
       setLoading(false);
 
       for (const app of rcResult.applications) {
@@ -296,6 +316,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).catch(console.error);
   }
 
+  // ── Custom categories ─────────────────────────────────────────────────────
+
+  function saveCustomCategory(data: { id?: string; label: string; icon: string; color: string; liability: boolean }) {
+    const trimmedLabel = data.label.trim();
+    const words = trimmedLabel.split(/\s+/);
+    const short = words[0].length <= 7 ? words[0] : words[0].substring(0, 7);
+    const cat: Category = {
+      id: data.id ?? generateId(),
+      label: trimmedLabel,
+      short,
+      color: data.color,
+      icon: data.icon,
+      liability: data.liability,
+    };
+    if (data.id) {
+      setCustomCategories(prev => prev.map(c => (c.id === data.id ? cat : c)));
+      dbUpdateCustomCategory(db, cat).catch(console.error);
+    } else {
+      setCustomCategories(prev => [...prev, cat]);
+      insertCustomCategory(db, cat, Date.now()).catch(console.error);
+    }
+  }
+
+  function removeCustomCategory(catId: string) {
+    setCustomCategories(prev => prev.filter(c => c.id !== catId));
+    dbDeleteCustomCategory(db, catId).catch(console.error);
+  }
+
   // ── Sheet actions ─────────────────────────────────────────────────────────
 
   function openAddSheet() { setEditingAsset(null); setAddEditOpen(true); }
@@ -304,16 +352,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   function confirmDelete() { if (deleteTarget) removeAsset(deleteTarget.id); }
   function openCurrencyPicker() { setCurrencyPickerOpen(true); }
   function closeCurrencyPicker() { setCurrencyPickerOpen(false); }
+  function openCategoriesSheet() { setCategoriesSheetForCreate(false); setCategoriesSheetOpen(true); }
+  function openCategoriesSheetForCreate() { setCategoriesSheetForCreate(true); setCategoriesSheetOpen(true); }
+  function closeCategoriesSheet() { setCategoriesSheetOpen(false); setCategoriesSheetForCreate(false); }
 
   return (
     <AppContext.Provider value={{
       loading,
       assets, snapshots, baseCurrency, hideBalance, onboardingDone, accentKey, darkMode,
+      customCategories,
       saveAsset, removeAsset, setBaseCurrency, setHideBalance,
       completeOnboarding, replayOnboarding, setAccentKey, setDarkMode, resetDemo, clearAll,
+      saveCustomCategory, removeCustomCategory,
       addEditOpen, editingAsset, deleteTarget, currencyPickerOpen,
+      categoriesSheetOpen, categoriesSheetForCreate,
       openAddSheet, openEditSheet, closeSheet, setDeleteTarget, confirmDelete,
       openCurrencyPicker, closeCurrencyPicker,
+      openCategoriesSheet, openCategoriesSheetForCreate, closeCategoriesSheet,
     }}>
       {children}
     </AppContext.Provider>

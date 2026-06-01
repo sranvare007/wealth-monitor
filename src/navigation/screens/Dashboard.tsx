@@ -17,7 +17,7 @@ import { FONTS } from '../../constants/fonts';
 
 export function DashboardScreen() {
   const {
-    assets, snapshots, baseCurrency, hideBalance, setHideBalance, openAddSheet,
+    assets, snapshots, baseCurrency, hideBalance, setHideBalance, openAddSheet, customCategories,
   } = useAppState();
   const { theme, accent } = useTheme();
   const insets = useSafeAreaInsets();
@@ -26,8 +26,14 @@ export function DashboardScreen() {
   const bottomPad = 86 + Math.max(insets.bottom, 8) + 16;
   const navigation = useNavigation<any>();
 
-  const totals = useMemo(() => computeTotals(assets, baseCurrency), [assets, baseCurrency]);
-  const dist   = useMemo(() => getDistribution(assets, baseCurrency), [assets, baseCurrency]);
+  const totals = useMemo(
+    () => computeTotals(assets, baseCurrency, customCategories),
+    [assets, baseCurrency, customCategories],
+  );
+  const dist = useMemo(
+    () => getDistribution(assets, baseCurrency, customCategories),
+    [assets, baseCurrency, customCategories],
+  );
 
   const last      = snapshots[snapshots.length - 1];
   const prev      = snapshots[snapshots.length - 2];

@@ -1,6 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 import { sql_001 } from './migrations/001_initial';
 import { sql_002_stmts } from './migrations/002_recurring_contributions';
+import { sql_003 } from './migrations/003_custom_categories';
 
 const DB_NAME = 'wealth-monitor.db';
 
@@ -23,6 +24,11 @@ export async function openAndMigrateDb(): Promise<SQLite.SQLiteDatabase> {
       await db.runAsync(stmt);
     }
     await db.execAsync('PRAGMA user_version = 2;');
+  }
+
+  if (version < 3) {
+    await db.execAsync(sql_003);
+    await db.execAsync('PRAGMA user_version = 3;');
   }
 
   return db;

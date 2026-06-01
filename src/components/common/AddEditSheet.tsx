@@ -55,6 +55,7 @@ const BLANK_FORM: FormState = {
 export function AddEditSheet() {
   const {
     addEditOpen, editingAsset, saveAsset, setDeleteTarget, closeSheet,
+    customCategories, openCategoriesSheetForCreate,
   } = useAppState();
   const { theme, accent } = useTheme();
   const insets = useSafeAreaInsets();
@@ -103,7 +104,25 @@ export function AddEditSheet() {
   const setField = (key: keyof FormState, value: string) =>
     setForm(prev => ({ ...prev, [key]: value }));
 
-  const isLiability = CAT[form.cat]?.liability;
+  const allCategories = useMemo(
+    () => [...CATEGORIES, ...customCategories],
+    [customCategories],
+  );
+  const customCatMap = useMemo(
+    () => Object.fromEntries(customCategories.map(c => [c.id, c])),
+    [customCategories],
+  );
+  const isLiability = CAT[form.cat]?.liability ?? customCatMap[form.cat]?.liability ?? false;
+
+  // Auto-select a newly created custom category while this sheet is open
+  const prevCustomCatCount = useRef(customCategories.length);
+  useEffect(() => {
+    if (addEditOpen && customCategories.length > prevCustomCatCount.current) {
+      const newest = customCategories[customCategories.length - 1];
+      if (newest) setField('cat', newest.id);
+    }
+    prevCustomCatCount.current = customCategories.length;
+  }, [customCategories.length]);
   const recurringContributionAmountVal = parseFloat(form.recurringContributionAmount.replace(/,/g, ''));
 
   // Compute when the next contribution would fire, for the preview hint
@@ -215,7 +234,7 @@ export function AddEditSheet() {
             {/* Category grid */}
             <Text style={[styles.fieldLabel, { color: theme.sub }]}>CATEGORY</Text>
             <View style={styles.catGrid}>
-              {CATEGORIES.map(c => {
+              {allCategories.map(c => {
                 const isSelected = form.cat === c.id;
                 return (
                   <TouchableOpacity
@@ -237,6 +256,16 @@ export function AddEditSheet() {
                   </TouchableOpacity>
                 );
               })}
+              {/* New category shortcut */}
+              <TouchableOpacity
+                onPress={openCategoriesSheetForCreate}
+                style={[styles.catBtn, styles.catBtnNew, { borderColor: theme.line, backgroundColor: theme.chipBg }]}
+                accessibilityLabel="New category"
+                accessibilityRole="button"
+              >
+                <Icon name="plus" size={21} color={theme.sub} strokeWidth={2.3} />
+                <Text style={[styles.catBtnText, { color: theme.sub }]}>New</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Asset name */}
@@ -513,6 +542,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   catBtnText: { fontSize: 10.5, textAlign: 'center', lineHeight: 14, fontFamily: FONTS.jakartaBold },
+  catBtnNew: { borderStyle: 'dashed' },
   inputBox: {
     borderRadius: 14, borderWidth: 1.5,
     marginBottom: 22,
