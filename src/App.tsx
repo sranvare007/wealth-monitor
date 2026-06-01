@@ -4,21 +4,24 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as React from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { DatabaseProvider } from './db/DatabaseContext';
 import { AppProvider } from './store/AppContext';
 import { Navigation } from './navigation';
 import { AppOverlays } from './components/common/AppOverlays';
 import { useAppFonts } from './hooks/useFonts';
 import { useTheme } from './hooks/useTheme';
+import { useAppState } from './store/AppContext';
 
 SplashScreen.preventAutoHideAsync();
 
 const prefix = createURL('/');
 
-// Inner shell: has access to AppContext via useTheme
+// Inner shell: has access to AppContext via useTheme / useAppState
 function AppShell({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { isDark } = useTheme();
+  const { loading } = useAppState();
 
-  if (!fontsLoaded) return null;
+  if (!fontsLoaded || loading) return null;
 
   return (
     <View style={{ flex: 1 }}>
@@ -42,9 +45,11 @@ export function App() {
 
   return (
     <SafeAreaProvider>
-      <AppProvider>
-        <AppShell fontsLoaded={fontsLoaded} />
-      </AppProvider>
+      <DatabaseProvider>
+        <AppProvider>
+          <AppShell fontsLoaded={fontsLoaded} />
+        </AppProvider>
+      </DatabaseProvider>
     </SafeAreaProvider>
   );
 }

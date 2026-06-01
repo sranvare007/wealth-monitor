@@ -1,13 +1,21 @@
 import React, {
-  createContext, useContext, useState, useMemo,
+  createContext, useContext, useState, useEffect,
 } from 'react';
 import type { Asset, Snapshot, AccentKey } from '../types';
 import { seedAssets, seedSnapshots } from '../data/seed';
 import { computeTotals } from '../utils/networth';
+import { useDatabase } from '../db/DatabaseContext';
+import { getAllAssets, upsertAsset, deleteAsset as dbDeleteAsset, clearAssets } from '../db/queries/assets';
+import { getAllSnapshots, insertSnapshot, clearSnapshots } from '../db/queries/snapshots';
+import { getSetting, setSetting } from '../db/queries/settings';
+import { generateId } from '../utils/uuid';
 
 // ─── Context shape ────────────────────────────────────────────────────────────
 
 type AppContextValue = {
+  // Async load state — true while reading initial data from DB
+  loading: boolean;
+
   // ── Data ──────────────────────────────────────────────────────────────────
   assets: Asset[];
   snapshots: Snapshot[];
@@ -48,18 +56,16 @@ const AppContext = createContext<AppContextValue | null>(null);
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const initialAssets = useMemo(() => seedAssets(), []);
+  const db = useDatabase(); // non-null: DatabaseProvider blocks until ready
 
-  const [assets, setAssets] = useState<Asset[]>(initialAssets);
-  const [snapshots, setSnapshots] = useState<Snapshot[]>(() => {
-    const nw = computeTotals(initialAssets, 'INR').netWorth;
-    return seedSnapshots(nw);
-  });
+  const [loading, setLoading] = useState(true);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [baseCurrency, setBaseCurrencyState] = useState('INR');
-  const [hideBalance, setHideBalance] = useState(false);
+  const [hideBalance, setHideBalanceState] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(false);
-  const [accentKey, setAccentKey] = useState<AccentKey>('indigo');
-  const [darkMode, setDarkMode] = useState(false);
+  const [accentKey, setAccentKeyState] = useState<AccentKey>('indigo');
+  const [darkMode, setDarkModeState] = useState(false);
 
   // Sheet state
   const [addEditOpen, setAddEditOpen] = useState(false);
@@ -67,66 +73,159 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [deleteTarget, setDeleteTarget] = useState<Asset | null>(null);
   const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // ── Load from DB on mount ─────────────────────────────────────────────────
 
-  function recordSnapshot(nextAssets: Asset[], base: string) {
+  useEffect(() => {
+    async function load() {
+      const [
+        dbAssets, dbSnapshots,
+        baseCurrencySetting, hideBalanceSetting,
+        onboardingDoneSetting, accentKeySetting, darkModeSetting,
+      ] = await Promise.all([
+        getAllAssets(db),
+        getAllSnapshots(db),
+        getSetting(db, 'BASE_CURRENCY'),
+        getSetting(db, 'HIDE_BALANCE'),
+        getSetting(db, 'ONBOARDING_DONE'),
+        getSetting(db, 'ACCENT_KEY'),
+        getSetting(db, 'DARK_MODE'),
+      ]);
+
+      setAssets(dbAssets);
+      setSnapshots(dbSnapshots);
+      if (baseCurrencySetting) setBaseCurrencyState(baseCurrencySetting);
+      setHideBalanceState(hideBalanceSetting === 'true');
+      setOnboardingDone(onboardingDoneSetting === 'true');
+      if (accentKeySetting) setAccentKeyState(accentKeySetting as AccentKey);
+      setDarkModeState(darkModeSetting === 'true');
+      setLoading(false);
+    }
+    load();
+  }, [db]);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  function buildSnapshot(nextAssets: Asset[], base: string, current: Snapshot[]): Snapshot | null {
     const nw = computeTotals(nextAssets, base).netWorth;
-    setSnapshots(prev => {
-      const last = prev[prev.length - 1];
-      if (last && Math.abs(last.v - nw) < 0.5 && Date.now() - last.t < 60_000) return prev;
-      return [...prev, { id: `s_${Date.now()}`, t: Date.now(), v: Math.round(nw) }];
-    });
+    const last = current[current.length - 1];
+    // Deduplicate: skip if net worth barely changed within the last minute
+    if (last && Math.abs(last.v - nw) < 0.5 && Date.now() - last.t < 60_000) return null;
+    return {
+      id: generateId(),
+      t: Date.now(),
+      v: Math.round(nw),
+    };
   }
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   function saveAsset(asset: Omit<Asset, 'id' | 'updated'> & { id?: string }) {
     let next: Asset[];
+    let saved: Asset;
+
     if (asset.id) {
-      next = assets.map(a =>
-        a.id === asset.id ? { ...a, ...asset, updated: Date.now() } as Asset : a,
-      );
+      saved = { ...asset, id: asset.id, updated: Date.now() } as Asset;
+      next = assets.map(a => (a.id === asset.id ? saved : a));
     } else {
-      const newAsset: Asset = { ...asset, id: `a_${Date.now()}`, updated: Date.now() } as Asset;
-      next = [...assets, newAsset];
+      saved = { ...asset, id: generateId(), updated: Date.now() } as Asset;
+      next = [...assets, saved];
     }
+
+    const snap = buildSnapshot(next, baseCurrency, snapshots);
     setAssets(next);
-    recordSnapshot(next, baseCurrency);
+    if (snap) setSnapshots(prev => [...prev, snap]);
     setAddEditOpen(false);
     setEditingAsset(null);
+
+    db.withTransactionAsync(async () => {
+      await upsertAsset(db, saved);
+      if (snap) await insertSnapshot(db, snap);
+    }).catch(console.error);
   }
 
   function removeAsset(assetId: string) {
     const next = assets.filter(a => a.id !== assetId);
+    const snap = buildSnapshot(next, baseCurrency, snapshots);
+
     setAssets(next);
-    recordSnapshot(next, baseCurrency);
+    if (snap) setSnapshots(prev => [...prev, snap]);
     setDeleteTarget(null);
     setAddEditOpen(false);
     setEditingAsset(null);
+
+    db.withTransactionAsync(async () => {
+      await dbDeleteAsset(db, assetId);
+      if (snap) await insertSnapshot(db, snap);
+    }).catch(console.error);
   }
 
   function setBaseCurrency(code: string) {
     setBaseCurrencyState(code);
+    setSetting(db, 'BASE_CURRENCY', code).catch(console.error);
+  }
+
+  function setHideBalance(hide: boolean) {
+    setHideBalanceState(hide);
+    setSetting(db, 'HIDE_BALANCE', String(hide)).catch(console.error);
   }
 
   function completeOnboarding(currency: string) {
     setBaseCurrencyState(currency);
     setOnboardingDone(true);
+    Promise.all([
+      setSetting(db, 'BASE_CURRENCY', currency),
+      setSetting(db, 'ONBOARDING_DONE', 'true'),
+    ]).catch(console.error);
   }
 
   function replayOnboarding() {
     setOnboardingDone(false);
+    setSetting(db, 'ONBOARDING_DONE', 'false').catch(console.error);
+  }
+
+  function setAccentKey(key: AccentKey) {
+    setAccentKeyState(key);
+    setSetting(db, 'ACCENT_KEY', key).catch(console.error);
+  }
+
+  function setDarkMode(dark: boolean) {
+    setDarkModeState(dark);
+    setSetting(db, 'DARK_MODE', String(dark)).catch(console.error);
   }
 
   function resetDemo() {
     const a = seedAssets();
+    const nw = computeTotals(a, 'INR').netWorth;
+    const snaps = seedSnapshots(nw);
+
     setAssets(a);
-    setSnapshots(seedSnapshots(computeTotals(a, baseCurrency).netWorth));
+    setSnapshots(snaps);
+    setBaseCurrencyState('INR');
+    setHideBalanceState(false);
+    setAddEditOpen(false);
+    setEditingAsset(null);
+    setDeleteTarget(null);
+
+    db.withTransactionAsync(async () => {
+      await clearAssets(db);
+      await clearSnapshots(db);
+      for (const asset of a) await upsertAsset(db, asset);
+      for (const snap of snaps) await insertSnapshot(db, snap);
+      await setSetting(db, 'BASE_CURRENCY', 'INR');
+      await setSetting(db, 'HIDE_BALANCE', 'false');
+    }).catch(console.error);
   }
 
   function clearAll() {
+    const snap: Snapshot = { id: generateId(), t: Date.now(), v: 0 };
     setAssets([]);
-    setSnapshots([{ id: 's_clear', t: Date.now(), v: 0 }]);
+    setSnapshots([snap]);
+
+    db.withTransactionAsync(async () => {
+      await clearAssets(db);
+      await clearSnapshots(db);
+      await insertSnapshot(db, snap);
+    }).catch(console.error);
   }
 
   // ── Sheet actions ─────────────────────────────────────────────────────────
@@ -134,19 +233,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   function openAddSheet() { setEditingAsset(null); setAddEditOpen(true); }
   function openEditSheet(asset: Asset) { setEditingAsset(asset); setAddEditOpen(true); }
   function closeSheet() { setAddEditOpen(false); setEditingAsset(null); }
-
-  function confirmDelete() {
-    if (deleteTarget) removeAsset(deleteTarget.id);
-  }
-
+  function confirmDelete() { if (deleteTarget) removeAsset(deleteTarget.id); }
   function openCurrencyPicker() { setCurrencyPickerOpen(true); }
   function closeCurrencyPicker() { setCurrencyPickerOpen(false); }
 
   return (
     <AppContext.Provider value={{
+      loading,
       assets, snapshots, baseCurrency, hideBalance, onboardingDone, accentKey, darkMode,
-      saveAsset, removeAsset, setBaseCurrency, setHideBalance, completeOnboarding, replayOnboarding,
-      setAccentKey, setDarkMode, resetDemo, clearAll,
+      saveAsset, removeAsset, setBaseCurrency, setHideBalance,
+      completeOnboarding, replayOnboarding, setAccentKey, setDarkMode, resetDemo, clearAll,
       addEditOpen, editingAsset, deleteTarget, currencyPickerOpen,
       openAddSheet, openEditSheet, closeSheet, setDeleteTarget, confirmDelete,
       openCurrencyPicker, closeCurrencyPicker,
