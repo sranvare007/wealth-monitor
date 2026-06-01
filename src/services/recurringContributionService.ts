@@ -8,8 +8,9 @@ import { advanceByFrequency } from '../utils/date';
 
 export type RCApplication = {
   asset: Asset;
-  totalAdded: number;
+  amountChanged: number;  // absolute value of the change (always positive)
   periods: number;
+  isLiability: boolean;   // true → balance was reduced; false → value was increased
 };
 
 export type ContributionResult = {
@@ -21,6 +22,7 @@ export async function applyDueContributions(
   db: SQLiteDatabase,
   assets: Asset[],
   baseCurrency: string,
+  liabilityCategoryIds: Set<string>,
 ): Promise<ContributionResult> {
   const now = Date.now();
   const due = assets.filter(
@@ -44,17 +46,27 @@ export async function applyDueContributions(
       nextDue = advanceByFrequency(nextDue, asset.recurringContributionFrequency!);
     }
 
-    const totalAdded = asset.recurringContributionAmount! * periods;
+    const isLiability = liabilityCategoryIds.has(asset.cat);
+    const totalScheduled = asset.recurringContributionAmount! * periods;
+
+    // Liabilities: reduce outstanding balance, capped at 0 (can't go negative)
+    // Assets: increase value
+    const newValue = isLiability
+      ? Math.max(0, asset.value - totalScheduled)
+      : asset.value + totalScheduled;
+    const amountChanged = Math.abs(newValue - asset.value);
+
     applications.push({
       asset: {
         ...asset,
-        value: asset.value + totalAdded,
+        value: newValue,
         updated: now,
         recurringContributionLastApplied: now,
         recurringContributionNextDue: nextDue,
       },
-      totalAdded,
+      amountChanged,
       periods,
+      isLiability,
     });
   }
 

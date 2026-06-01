@@ -15,6 +15,7 @@ import {
   deleteCustomCategory as dbDeleteCustomCategory,
 } from '../db/queries/custom_categories';
 import { generateId } from '../utils/uuid';
+import { CATEGORIES } from '../data/categories';
 import { applyDueContributions } from '../services/recurringContributionService';
 import {
   initNotifications,
@@ -91,6 +92,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   baseCurrencyRef.current = baseCurrency;
   const loadingRef = useRef(loading);
   loadingRef.current = loading;
+  const customCategoriesRef = useRef(customCategories);
+  customCategoriesRef.current = customCategories;
 
   // ── Load from DB on mount ─────────────────────────────────────────────────
 
@@ -121,7 +124,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const base = baseCurrencySetting ?? 'INR';
 
       // Apply any overdue contributions before setting initial state
-      const rcResult = await applyDueContributions(db, dbAssets, base).catch(
+      const liabilityCategoryIds = buildLiabilityCategoryIds(dbCustomCats);
+      const rcResult = await applyDueContributions(db, dbAssets, base, liabilityCategoryIds).catch(
         () => ({ applications: [], newSnapshots: [] }),
       );
 
@@ -144,8 +148,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
 
       for (const app of rcResult.applications) {
-        notifyContributionApplied(app.asset, app.totalAdded, app.periods).catch(() => {});
-        scheduleContributionReminder(app.asset).catch(() => {});
+        notifyContributionApplied(app.asset, app.amountChanged, app.periods, app.isLiability).catch(() => {});
+        scheduleContributionReminder(app.asset, app.isLiability).catch(() => {});
       }
     }
     load();
@@ -158,7 +162,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const currentAssets = assetsRef.current;
     const currentBase = baseCurrencyRef.current;
 
-    applyDueContributions(db, currentAssets, currentBase)
+    const liabilityCategoryIds = buildLiabilityCategoryIds(customCategoriesRef.current);
+    applyDueContributions(db, currentAssets, currentBase, liabilityCategoryIds)
       .then(result => {
         if (result.applications.length === 0) return;
         setAssets(prev =>
@@ -169,14 +174,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         );
         setSnapshots(prev => [...prev, ...result.newSnapshots]);
         for (const app of result.applications) {
-          notifyContributionApplied(app.asset, app.totalAdded, app.periods).catch(() => {});
-          scheduleContributionReminder(app.asset).catch(() => {});
+          notifyContributionApplied(app.asset, app.amountChanged, app.periods, app.isLiability).catch(() => {});
+          scheduleContributionReminder(app.asset, app.isLiability).catch(() => {});
         }
       })
       .catch(() => {});
   });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  function buildLiabilityCategoryIds(customCats: Category[]): Set<string> {
+    const ids = new Set(CATEGORIES.filter(c => c.liability).map(c => c.id));
+    for (const c of customCats) { if (c.liability) ids.add(c.id); }
+    return ids;
+  }
+
+  function isCategoryLiability(cat: string): boolean {
+    return buildLiabilityCategoryIds(customCategories).has(cat);
+  }
 
   function buildSnapshot(nextAssets: Asset[], base: string, current: Snapshot[]): Snapshot | null {
     const nw = computeTotals(nextAssets, base).netWorth;
@@ -208,7 +223,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (snap) await insertSnapshot(db, snap);
     }).then(() => {
       if (saved.recurringContributionEnabled === 1 && saved.recurringContributionNextDue) {
-        scheduleContributionReminder(saved).catch(() => {});
+        scheduleContributionReminder(saved, isCategoryLiability(saved.cat)).catch(() => {});
       } else {
         cancelContributionReminder(saved.id).catch(() => {});
       }

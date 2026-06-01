@@ -30,16 +30,18 @@ async function ensurePermission(): Promise<boolean> {
   return status === 'granted';
 }
 
-export async function scheduleContributionReminder(asset: Asset): Promise<void> {
+export async function scheduleContributionReminder(asset: Asset, isLiability: boolean): Promise<void> {
   if (!asset.recurringContributionEnabled || !asset.recurringContributionNextDue || !asset.recurringContributionAmount) return;
   if (asset.recurringContributionNextDue <= Date.now()) return;
   if (!(await ensurePermission())) return;
+
+  const action = isLiability ? 'deducted from' : 'added to';
 
   await Notifications.scheduleNotificationAsync({
     identifier: `contribution_${asset.id}`,
     content: {
       title: 'Contribution Due',
-      body: `${formatMoney(asset.recurringContributionAmount, asset.currency)} ready to be added to ${asset.name}. Open the app to apply.`,
+      body: `${formatMoney(asset.recurringContributionAmount, asset.currency)} ready to be ${action} ${asset.name}. Open the app to apply.`,
       data: { assetId: asset.id },
     },
     trigger: {
@@ -59,15 +61,17 @@ export async function cancelAllContributionReminders(): Promise<void> {
 
 export async function notifyContributionApplied(
   asset: Asset,
-  totalAdded: number,
+  amountChanged: number,
   periods: number,
+  isLiability: boolean,
 ): Promise<void> {
   if (!(await ensurePermission())) return;
 
+  const action = isLiability ? 'deducted from' : 'added to';
   const body =
     periods > 1
-      ? `${periods} contributions totalling ${formatMoney(totalAdded, asset.currency)} added to ${asset.name}`
-      : `${formatMoney(totalAdded, asset.currency)} added to ${asset.name}`;
+      ? `${periods} contributions totalling ${formatMoney(amountChanged, asset.currency)} ${action} ${asset.name}`
+      : `${formatMoney(amountChanged, asset.currency)} ${action} ${asset.name}`;
 
   await Notifications.scheduleNotificationAsync({
     content: {
