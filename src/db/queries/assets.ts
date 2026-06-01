@@ -1,7 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
-import type { Asset, RecurringContributionFrequency } from '../../types';
+import type { Asset, AssetTrack, RecurringContributionFrequency } from '../../types';
 
-// AssetRow mirrors SQLite column names (snake_case); mapped to camelCase Asset below
 type AssetRow = {
   id: string;
   name: string;
@@ -15,6 +14,7 @@ type AssetRow = {
   rc_frequency: string | null;
   rc_next_due: number | null;
   rc_last_applied: number | null;
+  track_json: string | null;
 };
 
 export async function getAllAssets(db: SQLiteDatabase): Promise<Asset[]> {
@@ -29,6 +29,7 @@ export async function getAllAssets(db: SQLiteDatabase): Promise<Asset[]> {
     currency: r.currency,
     note: r.note,
     updated: r.updated,
+    track: r.track_json ? (JSON.parse(r.track_json) as AssetTrack) : null,
     recurringContributionEnabled: r.rc_enabled,
     recurringContributionAmount: r.rc_amount,
     recurringContributionFrequency: r.rc_frequency as RecurringContributionFrequency | null,
@@ -41,8 +42,8 @@ export async function upsertAsset(db: SQLiteDatabase, asset: Asset): Promise<voi
   await db.runAsync(
     `INSERT OR REPLACE INTO assets
      (id, name, cat, value, currency, note, updated,
-      rc_enabled, rc_amount, rc_frequency, rc_next_due, rc_last_applied)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      rc_enabled, rc_amount, rc_frequency, rc_next_due, rc_last_applied, track_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       asset.id, asset.name, asset.cat, asset.value,
       asset.currency, asset.note, asset.updated,
@@ -51,6 +52,7 @@ export async function upsertAsset(db: SQLiteDatabase, asset: Asset): Promise<voi
       asset.recurringContributionFrequency ?? null,
       asset.recurringContributionNextDue ?? null,
       asset.recurringContributionLastApplied ?? null,
+      asset.track ? JSON.stringify(asset.track) : null,
     ],
   );
 }

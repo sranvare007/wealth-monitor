@@ -8,6 +8,11 @@ export type RecurringContributionFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'Q
 
 export type AccentKey = 'indigo' | 'violet' | 'emerald' | 'ocean' | 'sunset';
 
+export type AssetTrack =
+  | { kind: 'stock'; symbol: string; exchange: string; qty: number; price: number; changePct: number; name: string; currency: string }
+  | { kind: 'crypto'; symbol: string; chain: string; qty: number; price: number; changePct: number; name: string }
+  | { kind: 'gold'; purity: '24K' | '22K'; weight: number; perGram: number; changePct: number };
+
 export type Asset = {
   id: string;
   name: string;
@@ -16,6 +21,7 @@ export type Asset = {
   currency: string; // ISO 4217
   note: string;
   updated: number;  // Unix ms timestamp
+  track?: AssetTrack | null;
   // Recurring Contribution — optional; absent/0 means disabled
   recurringContributionEnabled?: number;
   recurringContributionAmount?: number | null;

@@ -6,6 +6,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAppState } from '../../store/AppContext';
 import { useTheme } from '../../hooks/useTheme';
 import { Icon } from '../../components/common/Icon';
+import { trackedSubtitle } from '../../components/common/TrackedEntry';
 import { CATEGORIES, CAT } from '../../data/categories';
 import { computeTotals, assetBaseValue } from '../../utils/networth';
 import { formatMoney } from '../../utils/currency';
@@ -106,7 +107,7 @@ export function AssetsScreen() {
             <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.line }]}>
               {g.items.map((a, i) => {
                 const baseVal = assetBaseValue(a, baseCurrency);
-                const diffCur = a.currency !== baseCurrency;
+                const diffCur = !a.track && a.currency !== baseCurrency;
                 return (
                   <TouchableOpacity
                     key={a.id}
@@ -121,8 +122,10 @@ export function AssetsScreen() {
                       <Text style={[styles.assetName, { color: theme.text }]} numberOfLines={1}>
                         {a.name}
                       </Text>
-                      <Text style={[styles.assetMeta, { color: theme.sub }]}>
-                        Updated {relativeDay(a.updated)}{a.note ? ` · ${a.note}` : ''}
+                      <Text style={[styles.assetMeta, { color: theme.sub }]} numberOfLines={1}>
+                        {a.track
+                          ? trackedSubtitle(a.track)
+                          : `Updated ${relativeDay(a.updated)}${a.note ? ` · ${a.note}` : ''}`}
                       </Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
@@ -130,11 +133,17 @@ export function AssetsScreen() {
                         {g.cat.liability ? '−' : ''}
                         {formatMoney(baseVal, baseCurrency, { compact: true })}
                       </Text>
-                      {diffCur && (
+                      {a.track ? (
+                        <Text style={[styles.assetChange, {
+                          color: a.track.changePct > 0 ? theme.pos : a.track.changePct < 0 ? theme.neg : theme.sub,
+                        }]}>
+                          {a.track.changePct > 0 ? '+' : ''}{(a.track.changePct ?? 0).toFixed(2)}% today
+                        </Text>
+                      ) : diffCur ? (
                         <Text style={[styles.assetOrig, { color: theme.sub }]}>
                           {formatMoney(a.value, a.currency, { compact: true })}
                         </Text>
-                      )}
+                      ) : null}
                     </View>
                     <Icon name="chevR" size={16} color={theme.faint} strokeWidth={2.2} />
                   </TouchableOpacity>
@@ -177,8 +186,9 @@ const styles = StyleSheet.create({
   assetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderBottomWidth: StyleSheet.hairlineWidth },
   assetName:  { fontSize: 15.5, fontFamily: FONTS.jakartaBold },
   assetMeta:  { fontSize: 12.5, marginTop: 2, fontFamily: FONTS.jakarta },
-  assetValue: { fontSize: 15.5, fontFamily: FONTS.groteskBold },
-  assetOrig:  { fontSize: 12, marginTop: 1, fontFamily: FONTS.grotesk },
+  assetValue:  { fontSize: 15.5, fontFamily: FONTS.groteskBold },
+  assetOrig:   { fontSize: 12, marginTop: 1, fontFamily: FONTS.grotesk },
+  assetChange: { fontSize: 12, marginTop: 1, fontFamily: FONTS.groteskBold },
 
   addBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderStyle: 'dashed', borderRadius: 16, padding: 15 },
   addBtnText: { fontSize: 15, fontFamily: FONTS.jakartaBold },
