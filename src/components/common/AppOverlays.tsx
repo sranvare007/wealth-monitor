@@ -2,7 +2,6 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useAppState } from '../../store/AppContext';
 import { useTheme } from '../../hooks/useTheme';
-import { AddEditSheet } from './AddEditSheet';
 import { DeleteConfirm } from './DeleteConfirm';
 import { CurrencyPicker } from './CurrencyPicker';
 import { CategoriesSheet } from './CategoriesSheet';
@@ -11,12 +10,11 @@ import { OnboardingScreen } from '../../navigation/screens/Onboarding';
 // Renders all full-screen overlays above the main navigation.
 // This component must be inside AppProvider.
 export function AppOverlays() {
-  const { onboardingDone, deleteTarget, addEditOpen, currencyPickerOpen } = useAppState();
+  const { onboardingDone, deleteTarget } = useAppState();
   const { theme } = useTheme();
 
   return (
     <>
-      <AddEditSheet />
       <CurrencyPicker />
       <CategoriesSheet />
       {deleteTarget && <DeleteConfirm />}

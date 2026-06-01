@@ -7,7 +7,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Icon } from './Icon';
 import type { IconName } from './Icon';
-import { useAppState } from '../../store/AppContext';
 import { useTheme } from '../../hooks/useTheme';
 import { FONTS } from '../../constants/fonts';
 
@@ -22,7 +21,6 @@ const TABS: TabDef[] = [
 
 export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const { openAddSheet } = useAppState();
   const { theme, accent, isDark } = useTheme();
 
   const bgColor = isDark ? 'rgba(11,14,20,0.9)' : 'rgba(255,255,255,0.92)';
@@ -72,7 +70,7 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
       {/* FAB — centred absolutely above the tab bar */}
       <View style={styles.fabWrapper} pointerEvents="box-none">
         <TouchableOpacity
-          onPress={openAddSheet}
+          onPress={() => (navigation as any).navigate('AddEdit')}
           accessibilityRole="button"
           accessibilityLabel="Add asset"
           activeOpacity={0.85}

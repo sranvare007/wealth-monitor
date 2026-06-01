@@ -17,14 +17,14 @@ import { FONTS } from '../../constants/fonts';
 
 export function DashboardScreen() {
   const {
-    assets, snapshots, baseCurrency, hideBalance, setHideBalance, openAddSheet, customCategories,
+    assets, snapshots, baseCurrency, hideBalance, setHideBalance, customCategories,
   } = useAppState();
   const { theme, accent } = useTheme();
   const insets = useSafeAreaInsets();
   // 62 (tab height) + 24 (FAB overhang) + insets.bottom (nav pill) + 16 (breathing room)
   // Match tab bar height (86) + its nav-pill padding (Math.max(insets.bottom,8)) + breathing room (16)
   const bottomPad = 86 + Math.max(insets.bottom, 8) + 16;
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<any>(); // typed loosely so root-stack screens are reachable
 
   const totals = useMemo(
     () => computeTotals(assets, baseCurrency, customCategories),
@@ -138,7 +138,7 @@ export function DashboardScreen() {
               Add what you own to see your net worth, distribution and growth over time.
             </Text>
             <TouchableOpacity
-              onPress={openAddSheet}
+              onPress={() => navigation.navigate('AddEdit')}
               style={[styles.emptyBtn, { backgroundColor: accent.solid }]}
               accessibilityRole="button"
             >

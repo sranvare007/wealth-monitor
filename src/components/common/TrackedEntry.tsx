@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
+  Modal, ScrollView, Platform, KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './Icon';
 import {
   searchStocks, searchCryptos, getCryptoChains, getGoldRates,
@@ -12,7 +14,7 @@ import { CAT } from '../../data/categories';
 import type { ThemeColors, AccentDef } from '../../constants/theme';
 import { FONTS } from '../../constants/fonts';
 
-// ─── Shared field types passed down from AddEditSheet ────────────────────────
+// ─── Shared field types passed down from AddEditScreen ───────────────────────
 
 export type TrackedFormFields = {
   symbol: string;
@@ -23,8 +25,8 @@ export type TrackedFormFields = {
   weight: string;
   price: number;
   changePct: number;
-  name: string;      // full instrument name (company / coin)
-  currency: string;  // native currency of the instrument
+  name: string;
+  currency: string;
 };
 
 export type TrackedErrors = {
@@ -88,8 +90,7 @@ type ResultRowProps = {
 };
 
 function SearchResultRow({ symbol, name, exchange, price, changePct, currency, color, theme, isLast, onPress }: ResultRowProps) {
-  const decimals = price >= 1 ? 2 : 4;
-  const formattedPrice = formatMoney(price, currency, { decimals });
+  const formattedPrice = formatMoney(price, currency, { decimals: price >= 1 ? 2 : 4 });
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -113,7 +114,7 @@ function SearchResultRow({ symbol, name, exchange, price, changePct, currency, c
   );
 }
 const resultS = StyleSheet.create({
-  row:      { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 11 },
+  row:      { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13 },
   info:     { flex: 1, minWidth: 0 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   symbol:   { fontSize: 14.5, fontFamily: FONTS.jakartaBold },
@@ -139,8 +140,7 @@ type SelectedCardProps = {
 };
 
 function SelectedCard({ symbol, name, exchange, price, changePct, currency, color, theme, accent, onChangePress }: SelectedCardProps) {
-  const decimals = price >= 1 ? 2 : 4;
-  const formattedPrice = formatMoney(price, currency, { decimals });
+  const formattedPrice = formatMoney(price, currency, { decimals: price >= 1 ? 2 : 4 });
   const changeTint = changePct > 0 ? theme.pos : changePct < 0 ? theme.neg : theme.sub;
   return (
     <View style={[selectedS.card, { backgroundColor: theme.chipBg }]}>
@@ -166,22 +166,20 @@ function SelectedCard({ symbol, name, exchange, price, changePct, currency, colo
   );
 }
 const selectedS = StyleSheet.create({
-  card:       { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, marginBottom: 20 },
-  info:       { flex: 1, minWidth: 0 },
-  titleRow:   { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  symbol:     { fontSize: 15.5, fontFamily: FONTS.jakartaExtraBold },
-  priceRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
-  price:      { fontSize: 13.5, fontFamily: FONTS.groteskBold },
-  badge:      { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  badgeText:  { fontSize: 12, fontFamily: FONTS.groteskBold },
-  changeBtn:  { fontSize: 13.5, fontFamily: FONTS.jakartaBold },
+  card:      { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, marginBottom: 20 },
+  info:      { flex: 1, minWidth: 0 },
+  titleRow:  { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  symbol:    { fontSize: 15.5, fontFamily: FONTS.jakartaExtraBold },
+  priceRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
+  price:     { fontSize: 13.5, fontFamily: FONTS.groteskBold },
+  badge:     { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  badgeText: { fontSize: 12, fontFamily: FONTS.groteskBold },
+  changeBtn: { fontSize: 13.5, fontFamily: FONTS.jakartaBold },
 });
 
 // ─── ValueReadout ─────────────────────────────────────────────────────────────
 
-function ValueReadout({
-  value, currency, base, theme, accent, formulaLine,
-}: {
+function ValueReadout({ value, currency, base, theme, accent, formulaLine }: {
   value: number; currency: string; base: string;
   theme: ThemeColors; accent: AccentDef; formulaLine: string;
 }) {
@@ -207,22 +205,16 @@ const readoutS = StyleSheet.create({
   formula:   { fontSize: 12.5, fontFamily: FONTS.jakarta, marginTop: 10, opacity: 0.8 },
 });
 
-// ─── EntryLabel ──────────────────────────────────────────────────────────────
+// ─── EntryLabel / QtyField ────────────────────────────────────────────────────
 
 function EntryLabel({ text, theme }: { text: string; theme: ThemeColors }) {
-  return (
-    <Text style={[labelS.text, { color: theme.sub }]}>{text}</Text>
-  );
+  return <Text style={[labelS.text, { color: theme.sub }]}>{text}</Text>;
 }
 const labelS = StyleSheet.create({
   text: { fontSize: 12.5, fontFamily: FONTS.jakartaBold, letterSpacing: 0.3, textTransform: 'uppercase', marginBottom: 8, marginLeft: 2 },
 });
 
-// ─── QtyField ────────────────────────────────────────────────────────────────
-
-function QtyField({
-  value, onChangeText, placeholder, hasError, theme,
-}: {
+function QtyField({ value, onChangeText, placeholder, hasError, theme }: {
   value: string; onChangeText: (v: string) => void; placeholder: string;
   hasError?: boolean; theme: ThemeColors;
 }) {
@@ -244,62 +236,164 @@ const qtyS = StyleSheet.create({
   input: { fontSize: 24, fontFamily: FONTS.groteskBold, paddingVertical: 12 },
 });
 
-// ─── SearchBar ───────────────────────────────────────────────────────────────
+// ─── SearchPickerModal ────────────────────────────────────────────────────────
+// A bottom-sheet style overlay with a search bar + scrollable results.
+// Using a Modal avoids any clipping or keyboard-position issues with
+// the parent ScrollView.
 
-function SearchBar({
-  value, onChangeText, placeholder, hasError, theme,
-}: {
-  value: string; onChangeText: (v: string) => void; placeholder: string;
-  hasError?: boolean; theme: ThemeColors;
-}) {
+type SearchPickerProps = {
+  visible: boolean;
+  query: string;
+  onChangeQuery: (q: string) => void;
+  onClose: () => void;
+  placeholder: string;
+  theme: ThemeColors;
+  accent: AccentDef;
+  children: React.ReactNode; // the result rows
+};
+
+function SearchPickerModal({
+  visible, query, onChangeQuery, onClose, placeholder, theme, accent, children,
+}: SearchPickerProps) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={[searchBarS.wrap, { backgroundColor: theme.chipBg, borderColor: hasError ? theme.neg : 'transparent' }]}>
-      <Icon name="search" size={18} color={theme.sub} strokeWidth={2.1} />
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={theme.faint}
-        style={[searchBarS.input, { color: theme.text }]}
-        autoCorrect={false}
-        autoCapitalize="none"
-      />
-      {!!value && (
-        <TouchableOpacity onPress={() => onChangeText('')}>
-          <Icon name="close" size={16} color={theme.sub} strokeWidth={2} />
-        </TouchableOpacity>
-      )}
-    </View>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {/* Backdrop */}
+        <TouchableOpacity
+          style={[pickerS.backdrop]}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+
+        {/* Panel — slides up from bottom */}
+        <View style={[pickerS.panel, { backgroundColor: theme.cardBg, paddingBottom: Math.max(insets.bottom, 16) }]}>
+          {/* Drag handle */}
+          <View style={pickerS.handleRow}>
+            <View style={[pickerS.handle, { backgroundColor: theme.line }]} />
+          </View>
+
+          {/* Search bar */}
+          <View style={[pickerS.searchWrap, { backgroundColor: theme.chipBg, borderColor: accent.solid }]}>
+            <Icon name="search" size={18} color={accent.solid} strokeWidth={2.1} />
+            <TextInput
+              autoFocus
+              value={query}
+              onChangeText={onChangeQuery}
+              placeholder={placeholder}
+              placeholderTextColor={theme.faint}
+              style={[pickerS.searchInput, { color: theme.text }]}
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
+            {!!query && (
+              <TouchableOpacity onPress={() => onChangeQuery('')}>
+                <Icon name="close" size={16} color={theme.sub} strokeWidth={2} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Scrollable results */}
+          <ScrollView
+            bounces={false}
+            keyboardShouldPersistTaps="always"
+            showsVerticalScrollIndicator={false}
+            style={pickerS.resultsList}
+          >
+            {children}
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
-const searchBarS = StyleSheet.create({
-  wrap:  { flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 14, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12 },
-  input: { flex: 1, fontSize: 15.5, padding: 0, fontFamily: FONTS.jakarta },
+
+const pickerS = StyleSheet.create({
+  backdrop:    { flex: 1, backgroundColor: 'rgba(8,10,15,0.45)' },
+  panel:       { borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 16 },
+  handleRow:   { alignItems: 'center', paddingTop: 10, paddingBottom: 6 },
+  handle:      { width: 40, height: 5, borderRadius: 5 },
+  searchWrap:  { flexDirection: 'row', alignItems: 'center', gap: 9, marginHorizontal: 16, marginBottom: 8, borderRadius: 14, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 12 },
+  searchInput: { flex: 1, fontSize: 15.5, padding: 0, fontFamily: FONTS.jakarta },
+  resultsList: { maxHeight: 340 },
+});
+
+// ─── SearchTrigger ────────────────────────────────────────────────────────────
+// Visually identical to the search bar but acts as a tap target to open the picker.
+
+function SearchTrigger({ placeholder, hasError, theme, onPress }: {
+  placeholder: string; hasError?: boolean; theme: ThemeColors; onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[triggerS.wrap, { backgroundColor: theme.chipBg, borderColor: hasError ? theme.neg : 'transparent' }]}
+      accessibilityRole="button"
+    >
+      <Icon name="search" size={18} color={theme.sub} strokeWidth={2.1} />
+      <Text style={[triggerS.text, { color: theme.faint }]} numberOfLines={1}>{placeholder}</Text>
+    </TouchableOpacity>
+  );
+}
+const triggerS = StyleSheet.create({
+  wrap: { flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 14, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 14, marginBottom: 22 },
+  text: { flex: 1, fontSize: 15.5, fontFamily: FONTS.jakarta },
 });
 
 // ─── StockEntry ───────────────────────────────────────────────────────────────
 
 function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: Omit<Props, 'cat'>) {
-  const [searchQ, setSearchQ] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const color = CAT['stocks']?.color ?? accent.solid;
-  const results = searchStocks(searchQ).slice(0, 8);
+
+  const results = searchStocks(query).slice(0, 12);
+
+  const pick = useCallback((s: StockInfo) => {
+    setMany({ symbol: s.symbol, exchange: s.exchange, price: s.price, changePct: s.changePct, currency: s.currency, name: s.name });
+    setPickerOpen(false);
+    setQuery('');
+  }, [setMany]);
+
+  const openPicker = () => { setQuery(''); setPickerOpen(true); };
+  const closePicker = () => { setPickerOpen(false); setQuery(''); };
 
   if (!fields.symbol) {
     return (
       <View>
         <EntryLabel text="Find a stock" theme={theme} />
-        <SearchBar
-          value={searchQ}
-          onChangeText={setSearchQ}
+
+        <SearchTrigger
           placeholder="Search by name or symbol (e.g. TCS, Apple)"
           hasError={errors.symbol}
           theme={theme}
+          onPress={openPicker}
         />
-        <View style={[listS.wrap, { backgroundColor: theme.cardBg, borderColor: theme.line }]}>
+
+        <SearchPickerModal
+          visible={pickerOpen}
+          query={query}
+          onChangeQuery={setQuery}
+          onClose={closePicker}
+          placeholder="Search by name or symbol (e.g. TCS, Apple)"
+          theme={theme}
+          accent={accent}
+        >
           {results.length === 0 ? (
-            <Text style={[listS.empty, { color: theme.sub }]}>
-              {searchQ ? `No match for "${searchQ}"` : 'Type to search stocks…'}
-            </Text>
+            <View style={emptyS.wrap}>
+              <Text style={[emptyS.text, { color: theme.sub }]}>
+                {query ? `No match for "${query}"` : 'Type to search stocks…'}
+              </Text>
+            </View>
           ) : (
             results.map((s: StockInfo, i: number) => (
               <SearchResultRow
@@ -313,18 +407,17 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
                 color={color}
                 theme={theme}
                 isLast={i === results.length - 1}
-                onPress={() => setMany({ symbol: s.symbol, exchange: s.exchange, price: s.price, changePct: s.changePct, currency: s.currency, name: s.name })}
+                onPress={() => pick(s)}
               />
             ))
           )}
-        </View>
+        </SearchPickerModal>
       </View>
     );
   }
 
   const qty = parseFloat(fields.qty) || 0;
   const value = qty * fields.price;
-  const priceDecimals = fields.price >= 1 ? 2 : 4;
 
   return (
     <View>
@@ -350,7 +443,7 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
           base={base}
           theme={theme}
           accent={accent}
-          formulaLine={`${qty} sh × ${formatMoney(fields.price, fields.currency, { decimals: priceDecimals })} · today ${fields.changePct > 0 ? '+' : ''}${fields.changePct.toFixed(2)}%`}
+          formulaLine={`${qty} sh × ${formatMoney(fields.price, fields.currency, { decimals: fields.price >= 1 ? 2 : 4 })} · today ${fields.changePct > 0 ? '+' : ''}${fields.changePct.toFixed(2)}%`}
         />
       )}
     </View>
@@ -360,27 +453,49 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
 // ─── CryptoEntry ──────────────────────────────────────────────────────────────
 
 function CryptoEntry({ fields, setField, setMany, theme, accent, base, errors }: Omit<Props, 'cat'>) {
-  const [searchQ, setSearchQ] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const color = CAT['crypto']?.color ?? accent.solid;
-  const results = searchCryptos(searchQ).slice(0, 8);
   const chains = fields.symbol ? getCryptoChains(fields.symbol) : [];
+
+  const results = searchCryptos(query).slice(0, 12);
+
+  const pick = useCallback((c: CryptoInfo) => {
+    setMany({ symbol: c.symbol, price: c.price, changePct: c.changePct, currency: 'USD', name: c.name, chain: c.chains[0] ?? '' });
+    setPickerOpen(false);
+    setQuery('');
+  }, [setMany]);
+
+  const openPicker = () => { setQuery(''); setPickerOpen(true); };
+  const closePicker = () => { setPickerOpen(false); setQuery(''); };
 
   if (!fields.symbol) {
     return (
       <View>
         <EntryLabel text="Find a coin" theme={theme} />
-        <SearchBar
-          value={searchQ}
-          onChangeText={setSearchQ}
+
+        <SearchTrigger
           placeholder="Search by name or symbol (e.g. BTC, Solana)"
           hasError={errors.symbol}
           theme={theme}
+          onPress={openPicker}
         />
-        <View style={[listS.wrap, { backgroundColor: theme.cardBg, borderColor: theme.line }]}>
+
+        <SearchPickerModal
+          visible={pickerOpen}
+          query={query}
+          onChangeQuery={setQuery}
+          onClose={closePicker}
+          placeholder="Search by name or symbol (e.g. BTC, Solana)"
+          theme={theme}
+          accent={accent}
+        >
           {results.length === 0 ? (
-            <Text style={[listS.empty, { color: theme.sub }]}>
-              {searchQ ? `No match for "${searchQ}"` : 'Type to search coins…'}
-            </Text>
+            <View style={emptyS.wrap}>
+              <Text style={[emptyS.text, { color: theme.sub }]}>
+                {query ? `No match for "${query}"` : 'Type to search coins…'}
+              </Text>
+            </View>
           ) : (
             results.map((c: CryptoInfo, i: number) => (
               <SearchResultRow
@@ -393,18 +508,17 @@ function CryptoEntry({ fields, setField, setMany, theme, accent, base, errors }:
                 color={color}
                 theme={theme}
                 isLast={i === results.length - 1}
-                onPress={() => setMany({ symbol: c.symbol, price: c.price, changePct: c.changePct, currency: 'USD', name: c.name, chain: c.chains[0] ?? '' })}
+                onPress={() => pick(c)}
               />
             ))
           )}
-        </View>
+        </SearchPickerModal>
       </View>
     );
   }
 
   const qty = parseFloat(fields.qty) || 0;
   const value = qty * fields.price;
-  const priceDecimals = fields.price >= 1 ? 2 : 4;
 
   return (
     <View>
@@ -431,10 +545,7 @@ function CryptoEntry({ fields, setField, setMany, theme, accent, base, errors }:
                 <TouchableOpacity
                   key={ch}
                   onPress={() => setField('chain', ch)}
-                  style={[chainS.chip, {
-                    borderColor: on ? color : theme.line,
-                    backgroundColor: on ? color + '14' : theme.cardBg,
-                  }]}
+                  style={[chainS.chip, { borderColor: on ? color : theme.line, backgroundColor: on ? color + '14' : theme.cardBg }]}
                 >
                   <Text style={[chainS.chipText, { color: on ? color : theme.sub }]}>{ch}</Text>
                 </TouchableOpacity>
@@ -453,7 +564,7 @@ function CryptoEntry({ fields, setField, setMany, theme, accent, base, errors }:
           base={base}
           theme={theme}
           accent={accent}
-          formulaLine={`${qty} ${fields.symbol} × ${formatMoney(fields.price, 'USD', { decimals: priceDecimals })} · today ${fields.changePct > 0 ? '+' : ''}${fields.changePct.toFixed(2)}%`}
+          formulaLine={`${qty} ${fields.symbol} × ${formatMoney(fields.price, 'USD', { decimals: fields.price >= 1 ? 2 : 4 })} · today ${fields.changePct > 0 ? '+' : ''}${fields.changePct.toFixed(2)}%`}
         />
       )}
     </View>
@@ -472,7 +583,6 @@ function GoldEntry({ fields, setField, theme, accent, base, errors }: Omit<Props
   const goldColor = CAT['gold']?.color ?? '#EAB308';
   const perGram = fields.purity === '22K' ? rates.perGram22k : rates.perGram24k;
   const weight = parseFloat(fields.weight) || 0;
-  const value = weight * perGram;
 
   return (
     <View>
@@ -480,18 +590,14 @@ function GoldEntry({ fields, setField, theme, accent, base, errors }: Omit<Props
       <View style={goldS.purRow}>
         {(['24K', '22K'] as const).map(p => {
           const on = fields.purity === p;
-          const sub = p === '24K' ? '99.9%' : '91.6%';
           return (
             <TouchableOpacity
               key={p}
               onPress={() => setField('purity', p)}
-              style={[goldS.purBtn, {
-                borderColor: on ? goldColor : theme.line,
-                backgroundColor: on ? goldColor + '14' : theme.cardBg,
-              }]}
+              style={[goldS.purBtn, { borderColor: on ? goldColor : theme.line, backgroundColor: on ? goldColor + '14' : theme.cardBg }]}
             >
               <Text style={[goldS.purLabel, { color: on ? theme.text : theme.sub }]}>{p}</Text>
-              <Text style={[goldS.purSub, { color: theme.sub }]}>{sub}</Text>
+              <Text style={[goldS.purSub, { color: theme.sub }]}>{p === '24K' ? '99.9%' : '91.6%'}</Text>
             </TouchableOpacity>
           );
         })}
@@ -502,7 +608,7 @@ function GoldEntry({ fields, setField, theme, accent, base, errors }: Omit<Props
 
       {weight > 0 && (
         <ValueReadout
-          value={value}
+          value={weight * perGram}
           currency={rates.currency}
           base={base}
           theme={theme}
@@ -520,10 +626,10 @@ const goldS = StyleSheet.create({
   purSub:   { fontSize: 11.5, fontFamily: FONTS.jakartaSemiBold },
 });
 
-// ─── ListWrapper styles ───────────────────────────────────────────────────────
-const listS = StyleSheet.create({
-  wrap:  { borderRadius: 14, borderWidth: 1, overflow: 'hidden', marginBottom: 22 },
-  empty: { padding: 16, textAlign: 'center', fontSize: 13.5, fontFamily: FONTS.jakarta },
+// ─── Shared empty-state styles ────────────────────────────────────────────────
+const emptyS = StyleSheet.create({
+  wrap: { paddingVertical: 24, paddingHorizontal: 16, alignItems: 'center' },
+  text: { fontSize: 13.5, fontFamily: FONTS.jakarta, textAlign: 'center' },
 });
 
 // ─── TrackedEntry dispatcher ──────────────────────────────────────────────────

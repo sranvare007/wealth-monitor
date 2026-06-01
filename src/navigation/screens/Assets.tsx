@@ -3,6 +3,7 @@ import {
   ScrollView, View, Text, TouchableOpacity, TextInput, StyleSheet,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useAppState } from '../../store/AppContext';
 import { useTheme } from '../../hooks/useTheme';
 import { Icon } from '../../components/common/Icon';
@@ -14,7 +15,9 @@ import { relativeDay } from '../../utils/date';
 import { FONTS } from '../../constants/fonts';
 
 export function AssetsScreen() {
-  const { assets, baseCurrency, openAddSheet, openEditSheet, setDeleteTarget, customCategories } = useAppState();
+  const { assets, baseCurrency, setDeleteTarget, customCategories } = useAppState();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const navigation = useNavigation<any>();
   const { theme, accent } = useTheme();
   const insets = useSafeAreaInsets();
   const bottomPad = 86 + Math.max(insets.bottom, 8) + 16;
@@ -111,7 +114,7 @@ export function AssetsScreen() {
                 return (
                   <TouchableOpacity
                     key={a.id}
-                    onPress={() => openEditSheet(a)}
+                    onPress={() => navigation.navigate('AddEdit', { assetId: a.id })}
                     style={[
                       styles.assetRow,
                       { borderBottomColor: theme.line },
@@ -155,7 +158,7 @@ export function AssetsScreen() {
 
         {/* Add button */}
         <TouchableOpacity
-          onPress={openAddSheet}
+          onPress={() => navigation.navigate('AddEdit')}
           style={[styles.addBtn, { borderColor: theme.line }]}
         >
           <Icon name="plus" size={19} color={accent.solid} strokeWidth={2.4} />

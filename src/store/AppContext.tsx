@@ -49,15 +49,10 @@ type AppContextValue = {
   clearAll: () => void;
   saveCustomCategory: (data: { id?: string; label: string; icon: string; color: string; liability: boolean }) => void;
   removeCustomCategory: (catId: string) => void;
-  addEditOpen: boolean;
-  editingAsset: Asset | null;
   deleteTarget: Asset | null;
   currencyPickerOpen: boolean;
   categoriesSheetOpen: boolean;
   categoriesSheetForCreate: boolean;
-  openAddSheet: () => void;
-  openEditSheet: (asset: Asset) => void;
-  closeSheet: () => void;
   setDeleteTarget: (asset: Asset | null) => void;
   confirmDelete: () => void;
   openCurrencyPicker: () => void;
@@ -84,8 +79,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [darkMode, setDarkModeState] = useState(false);
 
   const [customCategories, setCustomCategories] = useState<Category[]>([]);
-  const [addEditOpen, setAddEditOpen] = useState(false);
-  const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Asset | null>(null);
   const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
   const [categoriesSheetOpen, setCategoriesSheetOpen] = useState(false);
@@ -209,8 +202,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const snap = buildSnapshot(next, baseCurrency, snapshots);
     setAssets(next);
     if (snap) setSnapshots(prev => [...prev, snap]);
-    setAddEditOpen(false);
-    setEditingAsset(null);
 
     db.withTransactionAsync(async () => {
       await upsertAsset(db, saved);
@@ -231,8 +222,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAssets(next);
     if (snap) setSnapshots(prev => [...prev, snap]);
     setDeleteTarget(null);
-    setAddEditOpen(false);
-    setEditingAsset(null);
 
     db.withTransactionAsync(async () => {
       await dbDeleteAsset(db, assetId);
@@ -286,8 +275,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSnapshots(snaps);
     setBaseCurrencyState('INR');
     setHideBalanceState(false);
-    setAddEditOpen(false);
-    setEditingAsset(null);
     setDeleteTarget(null);
 
     cancelAllContributionReminders().catch(() => {});
@@ -346,9 +333,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ── Sheet actions ─────────────────────────────────────────────────────────
 
-  function openAddSheet() { setEditingAsset(null); setAddEditOpen(true); }
-  function openEditSheet(asset: Asset) { setEditingAsset(asset); setAddEditOpen(true); }
-  function closeSheet() { setAddEditOpen(false); setEditingAsset(null); }
   function confirmDelete() { if (deleteTarget) removeAsset(deleteTarget.id); }
   function openCurrencyPicker() { setCurrencyPickerOpen(true); }
   function closeCurrencyPicker() { setCurrencyPickerOpen(false); }
@@ -364,9 +348,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveAsset, removeAsset, setBaseCurrency, setHideBalance,
       completeOnboarding, replayOnboarding, setAccentKey, setDarkMode, resetDemo, clearAll,
       saveCustomCategory, removeCustomCategory,
-      addEditOpen, editingAsset, deleteTarget, currencyPickerOpen,
+      deleteTarget, currencyPickerOpen,
       categoriesSheetOpen, categoriesSheetForCreate,
-      openAddSheet, openEditSheet, closeSheet, setDeleteTarget, confirmDelete,
+      setDeleteTarget, confirmDelete,
       openCurrencyPicker, closeCurrencyPicker,
       openCategoriesSheet, openCategoriesSheetForCreate, closeCategoriesSheet,
     }}>
