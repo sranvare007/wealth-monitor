@@ -1,13 +1,17 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Modal, ScrollView, Platform, KeyboardAvoidingView,
+  Modal, ScrollView, Platform, KeyboardAvoidingView, ActivityIndicator,
+  Dimensions,
 } from 'react-native';
+
+const SCREEN_H = Dimensions.get('window').height;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './Icon';
 import {
-  searchStocks, searchCryptos, getCryptoChains, getGoldRates,
-  type StockInfo, type CryptoInfo,
+  searchStocksAPI, getStockQuoteAPI,
+  searchCryptos, getCryptoChains, getGoldRates,
+  type StockSearchResult, type CryptoInfo,
 } from '../../services/marketData';
 import { formatMoney, convert } from '../../utils/currency';
 import { CAT } from '../../data/categories';
@@ -75,22 +79,19 @@ const tagS = StyleSheet.create({
 });
 
 // ─── SearchResultRow ─────────────────────────────────────────────────────────
+// Search API returns metadata only (no price), so price is not shown here.
 
 type ResultRowProps = {
   symbol: string;
   name: string;
   exchange?: string;
-  price: number;
-  changePct: number;
-  currency: string;
   color: string;
   theme: ThemeColors;
   isLast: boolean;
   onPress: () => void;
 };
 
-function SearchResultRow({ symbol, name, exchange, price, changePct, currency, color, theme, isLast, onPress }: ResultRowProps) {
-  const formattedPrice = formatMoney(price, currency, { decimals: price >= 1 ? 2 : 4 });
+function SearchResultRow({ symbol, name, exchange, color, theme, isLast, onPress }: ResultRowProps) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -104,12 +105,7 @@ function SearchResultRow({ symbol, name, exchange, price, changePct, currency, c
         </View>
         <Text style={[resultS.name, { color: theme.sub }]} numberOfLines={1}>{name}</Text>
       </View>
-      <View style={resultS.priceCol}>
-        <Text style={[resultS.price, { color: theme.text }]}>{formattedPrice}</Text>
-        <Text style={[resultS.change, { color: changePct > 0 ? theme.pos : changePct < 0 ? theme.neg : theme.sub }]}>
-          {changePct > 0 ? '+' : ''}{changePct.toFixed(2)}%
-        </Text>
-      </View>
+      <Icon name="chevR" size={16} color={theme.faint} strokeWidth={2.2} />
     </TouchableOpacity>
   );
 }
@@ -119,9 +115,6 @@ const resultS = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   symbol:   { fontSize: 14.5, fontFamily: FONTS.jakartaBold },
   name:     { fontSize: 12.5, marginTop: 1, fontFamily: FONTS.jakarta },
-  priceCol: { alignItems: 'flex-end' },
-  price:    { fontSize: 14, fontFamily: FONTS.groteskBold },
-  change:   { fontSize: 12, fontFamily: FONTS.groteskBold },
 });
 
 // ─── SelectedCard ─────────────────────────────────────────────────────────────
@@ -137,11 +130,32 @@ type SelectedCardProps = {
   theme: ThemeColors;
   accent: AccentDef;
   onChangePress: () => void;
+  quoteFetching?: boolean;
+  priceUnavailable?: boolean;
 };
 
-function SelectedCard({ symbol, name, exchange, price, changePct, currency, color, theme, accent, onChangePress }: SelectedCardProps) {
+function SelectedCard({ symbol, name, exchange, price, changePct, currency, color, theme, accent, onChangePress, quoteFetching, priceUnavailable }: SelectedCardProps) {
   const formattedPrice = formatMoney(price, currency, { decimals: price >= 1 ? 2 : 4 });
   const changeTint = changePct > 0 ? theme.pos : changePct < 0 ? theme.neg : theme.sub;
+
+  const priceRow = quoteFetching ? (
+    <View style={selectedS.priceRow}>
+      <ActivityIndicator size="small" color={accent.solid} />
+      <Text style={[selectedS.fetchingText, { color: theme.sub }]}>Fetching price…</Text>
+    </View>
+  ) : priceUnavailable ? (
+    <Text style={[selectedS.unavailableText, { color: theme.sub }]}>Price unavailable</Text>
+  ) : (
+    <View style={selectedS.priceRow}>
+      <Text style={[selectedS.price, { color: theme.text }]}>{formattedPrice}</Text>
+      <View style={[selectedS.badge, { backgroundColor: changeTint + '22' }]}>
+        <Text style={[selectedS.badgeText, { color: changeTint }]}>
+          {changePct > 0 ? '+' : ''}{changePct.toFixed(2)}%
+        </Text>
+      </View>
+    </View>
+  );
+
   return (
     <View style={[selectedS.card, { backgroundColor: theme.chipBg }]}>
       <TickerBadge symbol={symbol} color={color} size={44} />
@@ -150,14 +164,7 @@ function SelectedCard({ symbol, name, exchange, price, changePct, currency, colo
           <Text style={[selectedS.symbol, { color: theme.text }]} numberOfLines={1}>{symbol}</Text>
           {exchange ? <ExchangeTag label={exchange} theme={theme} /> : null}
         </View>
-        <View style={selectedS.priceRow}>
-          <Text style={[selectedS.price, { color: theme.text }]}>{formattedPrice}</Text>
-          <View style={[selectedS.badge, { backgroundColor: changeTint + '22' }]}>
-            <Text style={[selectedS.badgeText, { color: changeTint }]}>
-              {changePct > 0 ? '+' : ''}{changePct.toFixed(2)}%
-            </Text>
-          </View>
-        </View>
+        {priceRow}
       </View>
       <TouchableOpacity onPress={onChangePress} accessibilityLabel="Change instrument">
         <Text style={[selectedS.changeBtn, { color: accent.solid }]}>Change</Text>
@@ -172,9 +179,11 @@ const selectedS = StyleSheet.create({
   symbol:    { fontSize: 15.5, fontFamily: FONTS.jakartaExtraBold },
   priceRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
   price:     { fontSize: 13.5, fontFamily: FONTS.groteskBold },
-  badge:     { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  badgeText: { fontSize: 12, fontFamily: FONTS.groteskBold },
-  changeBtn: { fontSize: 13.5, fontFamily: FONTS.jakartaBold },
+  badge:            { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  badgeText:        { fontSize: 12, fontFamily: FONTS.groteskBold },
+  changeBtn:        { fontSize: 13.5, fontFamily: FONTS.jakartaBold },
+  fetchingText:     { fontSize: 12.5, fontFamily: FONTS.jakarta, marginLeft: 6 },
+  unavailableText:  { fontSize: 12.5, fontFamily: FONTS.jakarta, marginTop: 3 },
 });
 
 // ─── ValueReadout ─────────────────────────────────────────────────────────────
@@ -319,12 +328,12 @@ function SearchPickerModal({
 
 const pickerS = StyleSheet.create({
   backdrop:    { flex: 1, backgroundColor: 'rgba(8,10,15,0.45)' },
-  panel:       { borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 16 },
+  panel:       { borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden', minHeight: SCREEN_H * 0.5, maxHeight: SCREEN_H * 0.85, shadowColor: '#000', shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 16 },
   handleRow:   { alignItems: 'center', paddingTop: 10, paddingBottom: 6 },
   handle:      { width: 40, height: 5, borderRadius: 5 },
   searchWrap:  { flexDirection: 'row', alignItems: 'center', gap: 9, marginHorizontal: 16, marginBottom: 8, borderRadius: 14, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 12 },
   searchInput: { flex: 1, fontSize: 15.5, padding: 0, fontFamily: FONTS.jakarta },
-  resultsList: { maxHeight: 340 },
+  resultsList: { flex: 1 },
 });
 
 // ─── SearchTrigger ────────────────────────────────────────────────────────────
@@ -354,18 +363,64 @@ const triggerS = StyleSheet.create({
 function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: Omit<Props, 'cat'>) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [results, setResults] = useState<StockSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [quoteFetching, setQuoteFetching] = useState(false);
+  const [priceUnavailable, setPriceUnavailable] = useState(false);
   const color = CAT['stocks']?.color ?? accent.solid;
 
-  const results = searchStocks(query).slice(0, 12);
+  // Debounced API search — fires 350 ms after the user stops typing
+  useEffect(() => {
+    if (!pickerOpen) return;
+    if (!query.trim()) {
+      setResults([]);
+      setSearchError(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    setSearchError(null);
+    const timer = setTimeout(async () => {
+      try {
+        const data = await searchStocksAPI(query);
+        setResults(data);
+      } catch {
+        setSearchError('Search failed. Check your connection.');
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [query, pickerOpen]);
 
-  const pick = useCallback((s: StockInfo) => {
-    setMany({ symbol: s.symbol, exchange: s.exchange, price: s.price, changePct: s.changePct, currency: s.currency, name: s.name });
+  const pick = useCallback(async (s: StockSearchResult) => {
+    // Close picker immediately, set basic metadata (price = 0 until quote arrives)
     setPickerOpen(false);
     setQuery('');
+    setResults([]);
+    setPriceUnavailable(false);
+    setMany({ symbol: s.symbol, exchange: s.exchange, price: 0, changePct: 0, currency: s.currency, name: s.name });
+
+    // Fetch real-time quote
+    setQuoteFetching(true);
+    try {
+      const quote = await getStockQuoteAPI(s.symbol);
+      if (quote) {
+        setMany({ price: quote.price, changePct: quote.changePercentage, currency: s.currency });
+      } else {
+        setPriceUnavailable(true);
+      }
+    } catch {
+      setPriceUnavailable(true);
+    } finally {
+      setQuoteFetching(false);
+    }
   }, [setMany]);
 
-  const openPicker = () => { setQuery(''); setPickerOpen(true); };
-  const closePicker = () => { setPickerOpen(false); setQuery(''); };
+  const openPicker  = () => { setQuery(''); setResults([]); setSearchError(null); setPickerOpen(true); };
+  const closePicker = () => { setPickerOpen(false); setQuery(''); setResults([]); setSearchError(null); };
 
   if (!fields.symbol) {
     return (
@@ -388,22 +443,27 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
           theme={theme}
           accent={accent}
         >
-          {results.length === 0 ? (
+          {searching ? (
+            <View style={emptyS.wrap}>
+              <ActivityIndicator color={accent.solid} />
+            </View>
+          ) : searchError ? (
+            <View style={emptyS.wrap}>
+              <Text style={[emptyS.text, { color: theme.neg }]}>{searchError}</Text>
+            </View>
+          ) : results.length === 0 ? (
             <View style={emptyS.wrap}>
               <Text style={[emptyS.text, { color: theme.sub }]}>
-                {query ? `No match for "${query}"` : 'Type to search stocks…'}
+                {query.trim() ? `No results for "${query}"` : 'Type to search stocks…'}
               </Text>
             </View>
           ) : (
-            results.map((s: StockInfo, i: number) => (
+            results.map((s, i) => (
               <SearchResultRow
                 key={s.symbol + s.exchange}
                 symbol={s.symbol}
                 name={s.name}
                 exchange={s.exchange}
-                price={s.price}
-                changePct={s.changePct}
-                currency={s.currency}
                 color={color}
                 theme={theme}
                 isLast={i === results.length - 1}
@@ -416,7 +476,7 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
     );
   }
 
-  const qty = parseFloat(fields.qty) || 0;
+  const qty   = parseFloat(fields.qty) || 0;
   const value = qty * fields.price;
 
   return (
@@ -432,11 +492,13 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
         color={color}
         theme={theme}
         accent={accent}
-        onChangePress={() => setMany({ symbol: '', qty: '' })}
+        onChangePress={() => { setMany({ symbol: '', qty: '' }); setPriceUnavailable(false); }}
+        quoteFetching={quoteFetching}
+        priceUnavailable={priceUnavailable}
       />
       <EntryLabel text="Quantity (shares)" theme={theme} />
       <QtyField value={fields.qty} onChangeText={v => setField('qty', v)} placeholder="0" hasError={errors.qty} theme={theme} />
-      {qty > 0 && (
+      {qty > 0 && fields.price > 0 && !quoteFetching && (
         <ValueReadout
           value={value}
           currency={fields.currency}
@@ -502,9 +564,6 @@ function CryptoEntry({ fields, setField, setMany, theme, accent, base, errors }:
                 key={c.symbol}
                 symbol={c.symbol}
                 name={c.name}
-                price={c.price}
-                changePct={c.changePct}
-                currency="USD"
                 color={color}
                 theme={theme}
                 isLast={i === results.length - 1}

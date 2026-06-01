@@ -134,6 +134,52 @@ export function getCryptoQuote(symbol: string): { price: number; changePct: numb
   return c ? { price: c.price, changePct: c.changePct, currency: 'USD' } : null;
 }
 
+// ── Stock search API ──────────────────────────────────────────────────────────
+
+export type StockSearchResult = {
+  symbol: string;
+  name: string;
+  currency: string;
+  exchangeFullName: string;
+  exchange: string;
+};
+
+const API_BASE = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/stocks';
+
+export async function searchStocksAPI(query: string): Promise<StockSearchResult[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const res = await fetch(`${API_BASE}/search?query=${encodeURIComponent(q)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = (await res.json()) as { success: boolean; data: StockSearchResult[] };
+  return json.data ?? [];
+}
+
+export type StockQuoteResult = {
+  symbol: string;
+  name: string;
+  price: number;
+  changePercentage: number;
+};
+
+// Returns null when the backend cannot provide a quote for the symbol
+// (e.g. exchange-suffixed symbols like RELIANCE.NS).
+export async function getStockQuoteAPI(symbol: string): Promise<StockQuoteResult | null> {
+  const res = await fetch(`${API_BASE}/${encodeURIComponent(symbol)}/quote`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = (await res.json()) as { success: boolean; data?: StockQuoteResult };
+  return json.success && json.data ? json.data : null;
+}
+
+// Try to look up a static price for a symbol returned by the API.
+// The API uses suffixes (e.g. "RELIANCE.NS") while the catalog uses bare symbols.
+export function getStaticStockQuote(symbol: string): Pick<StockInfo, 'price' | 'changePct' | 'currency'> | null {
+  const direct = getStockQuote(symbol);
+  if (direct) return direct;
+  const base = symbol.split('.')[0];
+  return getStockQuote(base);
+}
+
 export const TRACKED_CATS = ['stocks', 'crypto', 'gold'] as const;
 export type TrackedCat = (typeof TRACKED_CATS)[number];
 
