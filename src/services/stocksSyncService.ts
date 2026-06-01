@@ -11,20 +11,19 @@ import {
 import type { Exchange } from '../db/queries/exchanges';
 
 const API_KEY = 'demo';
-const EXCHANGES_URL = `https://api.twelvedata.com/exchanges?apikey=${API_KEY}`;
 const STOCKS_URL = `https://api.twelvedata.com/stocks`;
 const SETTING_KEY = 'STOCKS_INITIAL_SYNC_DONE';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// Indian and US exchanges to fetch stocks for
+const TRACKED_EXCHANGES: Exchange[] = [
+  { code: 'NSE',    title: 'NSE',    name: 'National Stock Exchange of India', country: 'India',         timezone: 'Asia/Kolkata',    synced_at: null },
+  { code: 'BSE',    title: 'BSE',    name: 'Bombay Stock Exchange',            country: 'India',         timezone: 'Asia/Kolkata',    synced_at: null },
+  { code: 'NYSE',   title: 'NYSE',   name: 'New York Stock Exchange',          country: 'United States', timezone: 'America/New_York', synced_at: null },
+  { code: 'NASDAQ', title: 'NASDAQ', name: 'NASDAQ',                           country: 'United States', timezone: 'America/New_York', synced_at: null },
+  { code: 'AMEX',   title: 'AMEX',   name: 'NYSE American',                   country: 'United States', timezone: 'America/New_York', synced_at: null },
+];
 
-type RawExchange = {
-  title: string;
-  name: string;
-  code: string;
-  country: string;
-  timezone: string;
-  [key: string]: unknown;
-};
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type RawStock = {
   symbol: string;
@@ -40,17 +39,6 @@ type RawStock = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function mapExchange(raw: RawExchange): Exchange {
-  return {
-    code:      raw.code     ?? '',
-    title:     raw.title    ?? '',
-    name:      raw.name     ?? '',
-    country:   raw.country  ?? '',
-    timezone:  raw.timezone ?? '',
-    synced_at: null,
-  };
-}
 
 function mapStock(raw: RawStock): StockInfo {
   return {
@@ -116,34 +104,20 @@ export async function syncStocksIfNeeded(db: SQLiteDatabase): Promise<void> {
     return;
   }
 
-  // ── Step 1: load or fetch exchanges ─────────────────────────────────────────
+  // ── Step 1: seed exchanges from hardcoded list if not yet seeded ────────────
 
-  let allExchanges = await getAllExchanges(db);
-  console.log(`[StocksSync] exchanges in DB: ${allExchanges.length}`);
+  const existingExchanges = await getAllExchanges(db);
+  console.log(`[StocksSync] exchanges in DB: ${existingExchanges.length}`);
 
-  if (allExchanges.length === 0) {
-    console.log('[StocksSync] no exchanges in DB — fetching from API');
-    const resp = await safeFetchJson<{ data: RawExchange[]; status?: string }>(
-      'exchanges',
-      EXCHANGES_URL,
-    );
-
-    if (!Array.isArray(resp?.data)) {
-      console.error('[StocksSync] exchanges response has no data array:', resp);
-      throw new Error('Unexpected exchanges API response shape');
-    }
-
-    allExchanges = resp.data.map(mapExchange);
-    console.log(`[StocksSync] ${allExchanges.length} exchanges received | codes: ${allExchanges.map(e => e.code).join(', ')}`);
-
-    await insertExchanges(db, allExchanges);
-    console.log('[StocksSync] exchanges stored in DB');
+  if (existingExchanges.length === 0) {
+    await insertExchanges(db, TRACKED_EXCHANGES);
+    console.log(`[StocksSync] seeded ${TRACKED_EXCHANGES.length} exchanges: ${TRACKED_EXCHANGES.map(e => e.code).join(', ')}`);
   }
 
   // ── Step 2: sync stocks for each unsynced exchange ───────────────────────
 
   const unsynced = await getUnsyncedExchanges(db);
-  console.log(`[StocksSync] ${unsynced.length} of ${allExchanges.length} exchanges still need stocks`);
+  console.log(`[StocksSync] ${unsynced.length} of ${TRACKED_EXCHANGES.length} exchanges still need stocks`);
 
   let totalInserted = 0;
   const failed: string[] = [];
@@ -199,5 +173,5 @@ export async function syncStocksIfNeeded(db: SQLiteDatabase): Promise<void> {
   }
 
   await setSetting(db, SETTING_KEY, 'true');
-  console.log(`[StocksSync] done — ${totalInserted} total stocks across ${allExchanges.length} exchanges`);
+  console.log(`[StocksSync] done — ${totalInserted} total stocks across ${TRACKED_EXCHANGES.length} exchanges`);
 }
