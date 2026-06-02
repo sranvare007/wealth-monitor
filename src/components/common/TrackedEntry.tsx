@@ -9,10 +9,12 @@ const SCREEN_H = Dimensions.get('window').height;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './Icon';
 import {
-  searchStocksAPI, getStockQuoteAPI,
+  getStockQuoteAPI,
   searchCryptos, getCryptoChains, getGoldRates,
-  type StockSearchResult, type CryptoInfo,
+  type CryptoInfo,
 } from '../../services/marketData';
+import { searchStocks, type StockInfo } from '../../db/queries/stocks_info';
+import { useDatabase } from '../../db/DatabaseContext';
 import { formatMoney, convert } from '../../utils/currency';
 import { CAT } from '../../data/categories';
 import type { ThemeColors, AccentDef } from '../../constants/theme';
@@ -361,42 +363,37 @@ const triggerS = StyleSheet.create({
 // ─── StockEntry ───────────────────────────────────────────────────────────────
 
 function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: Omit<Props, 'cat'>) {
+  const db = useDatabase();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<StockSearchResult[]>([]);
+  const [results, setResults] = useState<StockInfo[]>([]);
   const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
   const [quoteFetching, setQuoteFetching] = useState(false);
   const [priceUnavailable, setPriceUnavailable] = useState(false);
   const color = CAT['stocks']?.color ?? accent.solid;
 
-  // Debounced API search — fires 350 ms after the user stops typing
+  // Debounced local DB search — spinner shows immediately on keystroke,
+  // query fires after 300 ms of inactivity.
   useEffect(() => {
     if (!pickerOpen) return;
-    if (!query.trim()) {
-      setResults([]);
-      setSearchError(null);
-      setSearching(false);
-      return;
-    }
+    if (!query.trim()) { setResults([]); setSearching(false); return; }
+
     setSearching(true);
-    setSearchError(null);
     const timer = setTimeout(async () => {
       try {
-        const data = await searchStocksAPI(query);
-        setResults(data);
+        const rows = await searchStocks(db, query, 20);
+        setResults(rows);
       } catch {
-        setSearchError('Search failed. Check your connection.');
         setResults([]);
       } finally {
         setSearching(false);
       }
-    }, 350);
+    }, 300);
     return () => clearTimeout(timer);
-  }, [query, pickerOpen]);
+  }, [query, pickerOpen, db]);
 
-  const pick = useCallback(async (s: StockSearchResult) => {
-    // Close picker immediately, set basic metadata (price = 0 until quote arrives)
+  const pick = useCallback(async (s: StockInfo) => {
+    // Close picker and set metadata immediately; price arrives via quote API
     setPickerOpen(false);
     setQuery('');
     setResults([]);
@@ -408,7 +405,7 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
     try {
       const quote = await getStockQuoteAPI(s.symbol);
       if (quote) {
-        setMany({ price: quote.price, changePct: quote.changePercentage, currency: s.currency });
+        setMany({ price: quote.price, changePct: quote.changePercentage });
       } else {
         setPriceUnavailable(true);
       }
@@ -417,10 +414,10 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
     } finally {
       setQuoteFetching(false);
     }
-  }, [setMany]);
+  }, [setMany, db]);
 
-  const openPicker  = () => { setQuery(''); setResults([]); setSearchError(null); setPickerOpen(true); };
-  const closePicker = () => { setPickerOpen(false); setQuery(''); setResults([]); setSearchError(null); };
+  const openPicker  = () => { setQuery(''); setResults([]); setSearching(false); setPickerOpen(true); };
+  const closePicker = () => { setPickerOpen(false); setQuery(''); setResults([]); setSearching(false); };
 
   if (!fields.symbol) {
     return (
@@ -428,7 +425,7 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
         <EntryLabel text="Find a stock" theme={theme} />
 
         <SearchTrigger
-          placeholder="Search by name or symbol (e.g. TCS, Apple)"
+          placeholder="Search by name or symbol (e.g. TCS, AAPL)"
           hasError={errors.symbol}
           theme={theme}
           onPress={openPicker}
@@ -439,17 +436,13 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
           query={query}
           onChangeQuery={setQuery}
           onClose={closePicker}
-          placeholder="Search by name or symbol (e.g. TCS, Apple)"
+          placeholder="Search by name or symbol (e.g. TCS, AAPL)"
           theme={theme}
           accent={accent}
         >
           {searching ? (
             <View style={emptyS.wrap}>
               <ActivityIndicator color={accent.solid} />
-            </View>
-          ) : searchError ? (
-            <View style={emptyS.wrap}>
-              <Text style={[emptyS.text, { color: theme.neg }]}>{searchError}</Text>
             </View>
           ) : results.length === 0 ? (
             <View style={emptyS.wrap}>
