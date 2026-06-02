@@ -159,7 +159,12 @@ function SelectedCard({ symbol, name, exchange, price, changePct, currency, colo
   );
 
   return (
-    <View style={[selectedS.card, { backgroundColor: theme.chipBg }]}>
+    <TouchableOpacity
+      onPress={onChangePress}
+      accessibilityLabel="Change instrument"
+      accessibilityRole="button"
+      style={[selectedS.card, { backgroundColor: theme.chipBg }]}
+    >
       <TickerBadge symbol={symbol} color={color} size={44} />
       <View style={selectedS.info}>
         <View style={selectedS.titleRow}>
@@ -168,10 +173,8 @@ function SelectedCard({ symbol, name, exchange, price, changePct, currency, colo
         </View>
         {priceRow}
       </View>
-      <TouchableOpacity onPress={onChangePress} accessibilityLabel="Change instrument">
-        <Text style={[selectedS.changeBtn, { color: accent.solid }]}>Change</Text>
-      </TouchableOpacity>
-    </View>
+      <Text style={[selectedS.changeBtn, { color: accent.solid }]}>Change</Text>
+    </TouchableOpacity>
   );
 }
 const selectedS = StyleSheet.create({
@@ -485,10 +488,44 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
         color={color}
         theme={theme}
         accent={accent}
-        onChangePress={() => { setMany({ symbol: '', qty: '' }); setPriceUnavailable(false); }}
+        onChangePress={openPicker}
         quoteFetching={quoteFetching}
         priceUnavailable={priceUnavailable}
       />
+      <SearchPickerModal
+        visible={pickerOpen}
+        query={query}
+        onChangeQuery={setQuery}
+        onClose={closePicker}
+        placeholder="Search by name or symbol (e.g. TCS, AAPL)"
+        theme={theme}
+        accent={accent}
+      >
+        {searching ? (
+          <View style={emptyS.wrap}>
+            <ActivityIndicator color={accent.solid} />
+          </View>
+        ) : results.length === 0 ? (
+          <View style={emptyS.wrap}>
+            <Text style={[emptyS.text, { color: theme.sub }]}>
+              {query.trim() ? `No results for "${query}"` : 'Type to search stocks…'}
+            </Text>
+          </View>
+        ) : (
+          results.map((s, i) => (
+            <SearchResultRow
+              key={s.symbol + s.exchange}
+              symbol={s.symbol}
+              name={s.name}
+              exchange={s.exchange}
+              color={color}
+              theme={theme}
+              isLast={i === results.length - 1}
+              onPress={() => pick(s)}
+            />
+          ))
+        )}
+      </SearchPickerModal>
       <EntryLabel text="Quantity (shares)" theme={theme} />
       <QtyField value={fields.qty} onChangeText={v => setField('qty', v)} placeholder="0" hasError={errors.qty} theme={theme} />
       {qty > 0 && fields.price > 0 && !quoteFetching && (
