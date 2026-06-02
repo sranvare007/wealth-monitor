@@ -13,8 +13,23 @@ export const CUR: Record<string, Currency> = Object.fromEntries(
   CURRENCIES.map(c => [c.code, c]),
 );
 
-/** Convert `amount` from `from` currency to `to` currency via INR. */
+// USD-based rates loaded from API at startup (units of currency per 1 USD).
+// Empty until setExchangeRates() is called; convert() falls back to hardcoded rates.
+let _usdRates: Record<string, number> = {};
+
+export function setExchangeRates(rates: Record<string, number>): void {
+  _usdRates = rates;
+}
+
+/**
+ * Convert `amount` from `from` currency to `to` currency.
+ * Uses live USD-based rates when available, falls back to hardcoded INR-pivot.
+ */
 export function convert(amount: number, from: string, to: string): number {
+  if (Object.keys(_usdRates).length > 0) {
+    return (amount / (_usdRates[from] ?? 1)) * (_usdRates[to] ?? 1);
+  }
+  // Fallback: hardcoded rates are INR-pivoted (rate = X INR per 1 unit)
   const inr = amount * (CUR[from]?.rate ?? 1);
   return inr / (CUR[to]?.rate ?? 1);
 }

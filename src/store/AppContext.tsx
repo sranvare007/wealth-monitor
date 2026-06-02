@@ -25,6 +25,8 @@ import {
   notifyContributionApplied,
 } from '../services/notificationService';
 import { useAppForeground } from '../hooks/useAppForeground';
+import { loadExchangeRates } from '../services/currencyService';
+import { setExchangeRates } from '../utils/currency';
 
 // ─── Context shape ────────────────────────────────────────────────────────────
 
@@ -104,6 +106,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         baseCurrencySetting, hideBalanceSetting,
         onboardingDoneSetting, accentKeySetting, darkModeSetting,
         dbCustomCats,
+        exchangeRates,
       ] = await Promise.all([
         getAllAssets(db),
         getAllSnapshots(db),
@@ -113,7 +116,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getSetting(db, 'ACCENT_KEY'),
         getSetting(db, 'DARK_MODE'),
         getAllCustomCategories(db),
+        loadExchangeRates(db),
       ]);
+
+      setExchangeRates(exchangeRates);
 
       // Only ask permission on open for existing users who have already onboarded.
       // New users get asked at the end of the onboarding flow instead.
