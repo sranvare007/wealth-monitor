@@ -11,10 +11,14 @@ type Props = {
   base: string;
   theme: ThemeColors;
   size?: number;
+  selected?: string | null;
+  onSelect?: (id: string | null) => void;
 };
 
-export function DonutChart({ segments, base, theme, size = 200 }: Props) {
-  const [selected, setSelected] = useState<string | null>(null);
+export function DonutChart({ segments, base, theme, size = 200, selected: externalSelected, onSelect }: Props) {
+  const [internalSelected, setInternalSelected] = useState<string | null>(null);
+  const selected = externalSelected !== undefined ? externalSelected : internalSelected;
+  const setSelected = onSelect ?? setInternalSelected;
 
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
   const strokeWidth = 22;
@@ -40,7 +44,7 @@ export function DonutChart({ segments, base, theme, size = 200 }: Props) {
   const centerLabel = sel ? sel.label : 'Total Assets';
   const centerPct = sel ? Math.round((sel.value / total) * 100) + '%' : null;
 
-  const toggle = (id: string) => setSelected(prev => (prev === id ? null : id));
+  const toggle = (id: string) => setSelected(selected === id ? null : id);
   const reset = () => setSelected(null);
 
   return (

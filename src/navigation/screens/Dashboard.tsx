@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ScrollView, View, Text, TouchableOpacity, StyleSheet,
 } from 'react-native';
@@ -25,6 +25,8 @@ export function DashboardScreen() {
   // Match tab bar height (86) + its nav-pill padding (Math.max(insets.bottom,8)) + breathing room (16)
   const bottomPad = 86 + Math.max(insets.bottom, 8) + 16;
   const navigation = useNavigation<any>(); // typed loosely so root-stack screens are reachable
+
+  const [selectedSeg, setSelectedSeg] = useState<string | null>(null);
 
   const totals = useMemo(
     () => computeTotals(assets, baseCurrency, customCategories),
@@ -161,29 +163,50 @@ export function DashboardScreen() {
 
               <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.line }]}>
                 <View style={{ alignItems: 'center', marginBottom: 6 }}>
-                  <DonutChart segments={dist} base={baseCurrency} theme={theme} size={200} />
+                  <DonutChart
+                    segments={dist}
+                    base={baseCurrency}
+                    theme={theme}
+                    size={200}
+                    selected={selectedSeg}
+                    onSelect={setSelectedSeg}
+                  />
                 </View>
-                {dist.map(seg => {
-                  const total = dist.reduce((s, d) => s + d.value, 0) || 1;
-                  const pct = (seg.value / total) * 100;
-                  return (
-                    <View key={seg.id} style={styles.distRow}>
-                      <View style={[styles.distDot, { backgroundColor: seg.color }]} />
-                      <Text style={[styles.distLabel, { color: theme.text }]} numberOfLines={1}>
-                        {seg.label}
-                        {seg.liability && (
-                          <Text style={{ color: theme.neg, fontSize: 11 }}> DEBT</Text>
-                        )}
-                      </Text>
-                      <Text style={[styles.distValue, { color: theme.text }]}>
-                        {hideBalance ? '••••' : formatMoney(seg.value, baseCurrency, { compact: true })}
-                      </Text>
-                      <Text style={[styles.distPct, { color: theme.sub }]}>
-                        {pct.toFixed(1)}%
-                      </Text>
-                    </View>
-                  );
-                })}
+                <View style={{ marginTop: 8 }}>
+                  {dist.map(seg => {
+                    const total = dist.reduce((s, d) => s + d.value, 0) || 1;
+                    const pct = (seg.value / total) * 100;
+                    const isOn = selectedSeg === seg.id;
+                    return (
+                      <TouchableOpacity
+                        key={seg.id}
+                        onPress={() => setSelectedSeg(isOn ? null : seg.id)}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${seg.label}, ${pct.toFixed(1)} percent`}
+                        style={[
+                          styles.distRow,
+                          { borderRadius: 12, backgroundColor: isOn ? seg.color + '14' : 'transparent' },
+                          selectedSeg && !isOn ? { opacity: 0.5 } : undefined,
+                        ]}
+                      >
+                        <View style={[styles.distDot, { backgroundColor: seg.color }]} />
+                        <Text style={[styles.distLabel, { color: theme.text }]} numberOfLines={1}>
+                          {seg.label}
+                          {seg.liability && (
+                            <Text style={{ color: theme.neg, fontSize: 11 }}> DEBT</Text>
+                          )}
+                        </Text>
+                        <Text style={[styles.distValue, { color: theme.text }]}>
+                          {hideBalance ? '••••' : formatMoney(seg.value, baseCurrency, { compact: true })}
+                        </Text>
+                        <Text style={[styles.distPct, { color: theme.sub }]}>
+                          {pct.toFixed(1)}%
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
             </View>
 
