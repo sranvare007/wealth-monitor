@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import type { ThemeColors } from '../../constants/theme';
 import type { DistributionSegment } from '../../types';
@@ -72,12 +72,8 @@ export function DonutChart({ segments, base, theme, size = 200, selected: extern
           />
         ))}
       </Svg>
-      {/* center label — absolute overlay */}
-      <TouchableOpacity
-        onPress={reset}
-        activeOpacity={1}
-        style={[StyleSheet.absoluteFillObject, styles.center]}
-      >
+      {/* center label — pointer-events:none so taps reach the SVG arcs */}
+      <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.center]}>
         <Text style={[styles.centerLabel, { color: theme.sub }]} numberOfLines={1}>
           {centerLabel}
         </Text>
@@ -87,7 +83,7 @@ export function DonutChart({ segments, base, theme, size = 200, selected: extern
         {centerPct && sel && (
           <Text style={[styles.centerPct, { color: sel.color }]}>{centerPct}</Text>
         )}
-      </TouchableOpacity>
+      </View>
     </View>
   );
 }
