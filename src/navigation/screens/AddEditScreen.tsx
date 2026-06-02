@@ -55,6 +55,7 @@ type FormErrors = {
   symbol?: boolean;
   qty?: boolean;
   weight?: boolean;
+  price?: boolean;
 };
 
 const BLANK_FORM: FormState = {
@@ -234,6 +235,7 @@ export function AddEditScreen() {
     const qty = parseFloat(form.qty);
     if (!form.symbol) errs.symbol = true;
     if (!qty || qty <= 0) errs.qty = true;
+    if (form.cat === 'stocks' && (!form.price || form.price <= 0)) errs.price = true;
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
@@ -263,7 +265,7 @@ export function AddEditScreen() {
     price: form.price, changePct: form.changePct,
     name: form.name, currency: form.currency,
   };
-  const trackedErrors: TrackedErrors = { symbol: errors.symbol, qty: errors.qty, weight: errors.weight };
+  const trackedErrors: TrackedErrors = { symbol: errors.symbol, qty: errors.qty, weight: errors.weight, price: errors.price };
   const convertedValue = !tracked && form.currency !== 'INR' && parseFloat(form.value) > 0
     ? convert(parseFloat(form.value) || 0, form.currency, 'INR')
     : null;

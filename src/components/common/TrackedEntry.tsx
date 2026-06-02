@@ -15,7 +15,7 @@ import {
 } from '../../services/marketData';
 import { searchStocks, type StockInfo } from '../../db/queries/stocks_info';
 import { useDatabase } from '../../db/DatabaseContext';
-import { formatMoney, convert } from '../../utils/currency';
+import { formatMoney, convert, CURRENCIES } from '../../utils/currency';
 import { CAT } from '../../data/categories';
 import type { ThemeColors, AccentDef } from '../../constants/theme';
 import { FONTS } from '../../constants/fonts';
@@ -39,6 +39,7 @@ export type TrackedErrors = {
   symbol?: boolean;
   qty?: boolean;
   weight?: boolean;
+  price?: boolean;
 };
 
 type Props = {
@@ -249,6 +250,13 @@ const qtyS = StyleSheet.create({
   wrap:  { borderRadius: 14, borderWidth: 1.5, paddingHorizontal: 16, paddingVertical: 4, marginBottom: 22 },
   input: { fontSize: 24, fontFamily: FONTS.groteskBold, paddingVertical: 12 },
 });
+const priceS = StyleSheet.create({
+  wrap:     { borderRadius: 14, borderWidth: 1.5, marginBottom: 12 },
+  input:    { fontSize: 16, fontFamily: FONTS.jakarta, paddingHorizontal: 16, paddingVertical: 14 },
+  chipRow:  { gap: 7, paddingBottom: 4, marginBottom: 22 },
+  chip:     { borderWidth: 1.5, borderRadius: 11, paddingHorizontal: 13, paddingVertical: 7, flexShrink: 0 },
+  chipText: { fontSize: 13.5, fontFamily: FONTS.groteskSemiBold },
+});
 
 // ─── SearchPickerModal ────────────────────────────────────────────────────────
 // A bottom-sheet style overlay with a search bar + scrollable results.
@@ -373,6 +381,7 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
   const [searching, setSearching] = useState(false);
   const [quoteFetching, setQuoteFetching] = useState(false);
   const [priceUnavailable, setPriceUnavailable] = useState(false);
+  const [manualPrice, setManualPrice] = useState('');
   const color = CAT['stocks']?.color ?? accent.solid;
 
   // Debounced local DB search — spinner shows immediately on keystroke,
@@ -401,6 +410,7 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
     setQuery('');
     setResults([]);
     setPriceUnavailable(false);
+    setManualPrice('');
     setMany({ symbol: s.symbol, exchange: s.exchange, price: 0, changePct: 0, currency: s.currency, name: s.name });
 
     // Fetch real-time quote
@@ -528,6 +538,44 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
       </SearchPickerModal>
       <EntryLabel text="Quantity (shares)" theme={theme} />
       <QtyField value={fields.qty} onChangeText={v => setField('qty', v)} placeholder="0" hasError={errors.qty} theme={theme} />
+      {priceUnavailable && (
+        <>
+          <EntryLabel text="Price per share" theme={theme} />
+          <View style={[priceS.wrap, { backgroundColor: theme.chipBg, borderColor: errors.price ? theme.neg : 'transparent' }]}>
+            <TextInput
+              value={manualPrice}
+              onChangeText={v => {
+                const clean = v.replace(/[^0-9.]/g, '');
+                setManualPrice(clean);
+                setMany({ price: parseFloat(clean) || 0 });
+              }}
+              keyboardType="decimal-pad"
+              placeholder="Enter current price"
+              placeholderTextColor={theme.faint}
+              style={[priceS.input, { color: theme.text }]}
+            />
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={priceS.chipRow}>
+            {CURRENCIES.map(c => {
+              const isSelected = fields.currency === c.code;
+              return (
+                <TouchableOpacity
+                  key={c.code}
+                  onPress={() => setField('currency', c.code)}
+                  style={[priceS.chip, {
+                    borderColor: isSelected ? accent.solid : theme.line,
+                    backgroundColor: isSelected ? accent.solid + '20' : theme.chipBg,
+                  }]}
+                >
+                  <Text style={[priceS.chipText, { color: isSelected ? accent.solid : theme.sub }]}>
+                    {c.symbol} {c.code}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </>
+      )}
       {qty > 0 && fields.price > 0 && !quoteFetching && (
         <ValueReadout
           value={value}
