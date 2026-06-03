@@ -6,6 +6,7 @@ import { sql_004_stmts } from './migrations/004_tracked_assets';
 import { sql_005 } from './migrations/005_stocks_info';
 import { sql_006 } from './migrations/006_exchanges';
 import { sql_007 } from './migrations/007_exchanges_sync_tracking';
+import { sql_008 } from './migrations/008_gold_price_cache';
 
 const DB_NAME = 'wealth-monitor.db';
 
@@ -61,6 +62,11 @@ export async function openAndMigrateDb(): Promise<SQLite.SQLiteDatabase> {
   if (version < 7) {
     await db.execAsync(sql_007);
     await db.execAsync('PRAGMA user_version = 7;');
+  }
+
+  if (version < 8) {
+    await db.execAsync(sql_008);
+    await db.execAsync('PRAGMA user_version = 8;');
   }
 
   return db;

@@ -1,6 +1,8 @@
 // ─── Market data layer for live-tracked assets (stocks, crypto, gold) ────────
 // Placeholder price book — static seed data so the app works offline.
-// Replace getStockQuote / getCryptoQuote / getGoldRates with real API calls.
+// Gold rates are fetched live; see goldPriceService.ts.
+
+import { getLiveGoldRates } from './goldPriceService';
 
 export type StockInfo = {
   symbol: string;
@@ -80,12 +82,12 @@ const CRYPTO_CATALOG: CryptoInfo[] = [
   { symbol: 'TON',  name: 'Toncoin',   price: 5.30,     changePct:  1.10, chains: ['TON'] },
 ];
 
-// ── Gold rates ─────────────────────────────────────────────────────────────────
-const GOLD_RATES: GoldRates = {
+// ── Gold rates — fallback used when live data is not yet loaded ────────────────
+const GOLD_RATES_FALLBACK: GoldRates = {
   currency: 'INR',
   perGram24k: 7320,
   perGram22k: 6710,
-  changePct: 0.45,
+  changePct: 0,
 };
 
 // ── Lookup maps ───────────────────────────────────────────────────────────────
@@ -121,7 +123,16 @@ export function getCryptoChains(symbol: string): string[] {
 }
 
 export function getGoldRates(): GoldRates {
-  return GOLD_RATES;
+  const live = getLiveGoldRates();
+  if (live) {
+    return {
+      currency: live.currency,
+      perGram24k: live.priceGram24k,
+      perGram22k: live.priceGram22k,
+      changePct: 0,
+    };
+  }
+  return GOLD_RATES_FALLBACK;
 }
 
 export function getStockQuote(symbol: string): Pick<StockInfo, 'price' | 'changePct' | 'currency'> | null {

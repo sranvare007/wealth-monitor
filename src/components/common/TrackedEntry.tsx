@@ -715,6 +715,11 @@ const chainS = StyleSheet.create({
 
 // ─── GoldEntry ────────────────────────────────────────────────────────────────
 
+const GOLD_PURITY_INFO: Record<'24K' | '22K', { fineness: string; perGram: (r: ReturnType<typeof getGoldRates>) => number }> = {
+  '24K': { fineness: '99.9%', perGram: r => r.perGram24k },
+  '22K': { fineness: '91.6%', perGram: r => r.perGram22k },
+};
+
 function GoldEntry({ fields, setField, theme, accent, base, errors }: Omit<Props, 'cat' | 'setMany'> & { setMany?: unknown }) {
   const rates = getGoldRates();
   const goldColor = CAT['gold']?.color ?? '#EAB308';
@@ -727,14 +732,21 @@ function GoldEntry({ fields, setField, theme, accent, base, errors }: Omit<Props
       <View style={goldS.purRow}>
         {(['24K', '22K'] as const).map(p => {
           const on = fields.purity === p;
+          const info = GOLD_PURITY_INFO[p];
+          const pgPrice = info.perGram(rates);
           return (
             <TouchableOpacity
               key={p}
               onPress={() => setField('purity', p)}
               style={[goldS.purBtn, { borderColor: on ? goldColor : theme.line, backgroundColor: on ? goldColor + '14' : theme.cardBg }]}
+              accessibilityLabel={`${p} gold, ${info.fineness}, ${formatMoney(pgPrice, rates.currency)} per gram`}
+              accessibilityRole="button"
             >
               <Text style={[goldS.purLabel, { color: on ? theme.text : theme.sub }]}>{p}</Text>
-              <Text style={[goldS.purSub, { color: theme.sub }]}>{p === '24K' ? '99.9%' : '91.6%'}</Text>
+              <Text style={[goldS.purSub, { color: theme.sub }]}>{info.fineness}</Text>
+              <Text style={[goldS.purPrice, { color: on ? goldColor : theme.sub }]}>
+                {formatMoney(pgPrice, rates.currency)}/g
+              </Text>
             </TouchableOpacity>
           );
         })}
@@ -750,7 +762,7 @@ function GoldEntry({ fields, setField, theme, accent, base, errors }: Omit<Props
           base={base}
           theme={theme}
           accent={accent}
-          formulaLine={`${weight} g × ${formatMoney(perGram, rates.currency)}/g (${fields.purity}) · today +${rates.changePct.toFixed(2)}%`}
+          formulaLine={`${weight} g × ${formatMoney(perGram, rates.currency)}/g (${fields.purity})`}
         />
       )}
     </View>
@@ -761,6 +773,7 @@ const goldS = StyleSheet.create({
   purBtn:   { flex: 1, borderWidth: 1.5, borderRadius: 14, paddingVertical: 13, paddingHorizontal: 8, alignItems: 'center', gap: 3 },
   purLabel: { fontSize: 17, fontFamily: FONTS.jakartaExtraBold },
   purSub:   { fontSize: 11.5, fontFamily: FONTS.jakartaSemiBold },
+  purPrice: { fontSize: 11.5, fontFamily: FONTS.groteskBold, marginTop: 2 },
 });
 
 // ─── Shared empty-state styles ────────────────────────────────────────────────
