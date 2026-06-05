@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { openAndMigrateDb } from './database';
+import { syncCryptosIfNeeded } from '../services/cryptoSyncService';
 
 const DbContext = createContext<SQLiteDatabase | null>(null);
 
@@ -10,6 +11,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     openAndMigrateDb().then(readyDb => {
       setDb(readyDb);
+      syncCryptosIfNeeded(readyDb).catch(() => {});
     });
   }, []);
 

@@ -10,7 +10,7 @@ export type AccentKey = 'indigo' | 'violet' | 'emerald' | 'ocean' | 'sunset';
 
 export type AssetTrack =
   | { kind: 'stock'; symbol: string; exchange: string; instrumentKey: string; qty: number; price: number; changePct: number; name: string; currency: string }
-  | { kind: 'crypto'; symbol: string; chain: string; qty: number; price: number; changePct: number; name: string }
+  | { kind: 'crypto'; symbol: string; qty: number; price: number; changePct: number; name: string }
   | { kind: 'gold'; purity: '24K' | '22K'; weight: number; perGram: number; changePct: number };
 
 export type Asset = {

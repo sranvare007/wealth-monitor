@@ -41,7 +41,6 @@ type FormState = {
   symbol: string;
   exchange: string;
   instrumentKey: string;
-  chain: string;
   purity: '24K' | '22K';
   qty: string;
   weight: string;
@@ -71,7 +70,6 @@ const BLANK_FORM: FormState = {
   symbol: '',
   exchange: '',
   instrumentKey: '',
-  chain: '',
   purity: '24K',
   qty: '',
   weight: '',
@@ -117,7 +115,6 @@ export function AddEditScreen() {
         symbol:       tk && tk.kind !== 'gold' ? tk.symbol       : '',
         exchange:     tk && tk.kind === 'stock'  ? tk.exchange     : '',
         instrumentKey: tk && tk.kind === 'stock' ? tk.instrumentKey : '',
-        chain:     tk && tk.kind === 'crypto' ? tk.chain     : '',
         purity:    tk && tk.kind === 'gold'   ? tk.purity    : '24K',
         qty:       tk && tk.kind !== 'gold'   ? String(tk.qty)    : '',
         weight:    tk && tk.kind === 'gold'   ? String(tk.weight) : '',

@@ -10,9 +10,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './Icon';
 import {
   getStockLTPAPI, searchStocksAPI,
-  searchCryptos, getCryptoChains, getGoldRates,
-  type StockInfo, type CryptoInfo,
+  getGoldRates,
+  type StockInfo,
 } from '../../services/marketData';
+import { searchCryptosDB, type CryptoInfoRow } from '../../db/queries/crypto_info';
+import { useDatabase } from '../../db/DatabaseContext';
 import { formatMoney, convert, CURRENCIES } from '../../utils/currency';
 import { CAT } from '../../data/categories';
 import type { ThemeColors, AccentDef } from '../../constants/theme';
@@ -24,7 +26,6 @@ export type TrackedFormFields = {
   symbol: string;
   exchange: string;
   instrumentKey: string;
-  chain: string;
   purity: '24K' | '22K';
   qty: string;
   weight: string;
@@ -80,20 +81,21 @@ const tagS = StyleSheet.create({
   text: { fontSize: 10.5, fontFamily: FONTS.groteskBold, letterSpacing: 0.3, textTransform: 'uppercase' },
 });
 
-// ─── SearchResultRow ─────────────────────────────────────────────────────────
-// Search API returns metadata only (no price), so price is not shown here.
+// ─── SearchResultRow ──────────────────────────────────────────────────────────
 
 type ResultRowProps = {
   symbol: string;
   name: string;
   exchange?: string;
+  price?: number;
+  currency?: string;
   color: string;
   theme: ThemeColors;
   isLast: boolean;
   onPress: () => void;
 };
 
-function SearchResultRow({ symbol, name, exchange, color, theme, isLast, onPress }: ResultRowProps) {
+function SearchResultRow({ symbol, name, exchange, price, currency, color, theme, isLast, onPress }: ResultRowProps) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -107,7 +109,13 @@ function SearchResultRow({ symbol, name, exchange, color, theme, isLast, onPress
         </View>
         <Text style={[resultS.name, { color: theme.sub }]} numberOfLines={1}>{name}</Text>
       </View>
-      <Icon name="chevR" size={16} color={theme.faint} strokeWidth={2.2} />
+      {price != null ? (
+        <Text style={[resultS.price, { color: theme.text }]}>
+          {formatMoney(price, currency ?? 'USD', { decimals: price >= 1 ? 2 : 4 })}
+        </Text>
+      ) : (
+        <Icon name="chevR" size={16} color={theme.faint} strokeWidth={2.2} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -117,6 +125,7 @@ const resultS = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   symbol:   { fontSize: 14.5, fontFamily: FONTS.jakartaBold },
   name:     { fontSize: 12.5, marginTop: 1, fontFamily: FONTS.jakarta },
+  price:    { fontSize: 13, fontFamily: FONTS.groteskBold, flexShrink: 0 },
 });
 
 // ─── SelectedCard ─────────────────────────────────────────────────────────────
@@ -591,21 +600,43 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
 // ─── CryptoEntry ──────────────────────────────────────────────────────────────
 
 function CryptoEntry({ fields, setField, setMany, theme, accent, base, errors }: Omit<Props, 'cat'>) {
+  const db = useDatabase();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [results, setResults] = useState<CryptoInfoRow[]>([]);
+  const [searching, setSearching] = useState(false);
   const color = CAT['crypto']?.color ?? accent.solid;
-  const chains = fields.symbol ? getCryptoChains(fields.symbol) : [];
+  const handleQueryChange = useCallback((q: string) => {
+    setQuery(q);
+    if (q.trim()) {
+      setSearching(true);
+    } else {
+      setSearching(false);
+      setResults([]);
+    }
+  }, []);
 
-  const results = searchCryptos(query).slice(0, 12);
+  useEffect(() => {
+    if (!pickerOpen || !query.trim()) return;
 
-  const pick = useCallback((c: CryptoInfo) => {
-    setMany({ symbol: c.symbol, price: c.price, changePct: c.changePct, currency: 'USD', name: c.name, chain: c.chains[0] ?? '' });
+    const timer = setTimeout(() => {
+      searchCryptosDB(db, query)
+        .then(rows => setResults(rows))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query, pickerOpen, db]);
+
+  const pick = useCallback((c: CryptoInfoRow) => {
+    setMany({ symbol: c.symbol, price: c.price, changePct: c.percent_change_24h, currency: 'USD', name: c.name });
     setPickerOpen(false);
     setQuery('');
+    setResults([]);
   }, [setMany]);
 
-  const openPicker = () => { setQuery(''); setPickerOpen(true); };
-  const closePicker = () => { setPickerOpen(false); setQuery(''); };
+  const openPicker  = () => { setQuery(''); setResults([]); setSearching(false); setPickerOpen(true); };
+  const closePicker = () => { setPickerOpen(false); setQuery(''); setResults([]); setSearching(false); };
 
   if (!fields.symbol) {
     return (
@@ -622,24 +653,30 @@ function CryptoEntry({ fields, setField, setMany, theme, accent, base, errors }:
         <SearchPickerModal
           visible={pickerOpen}
           query={query}
-          onChangeQuery={setQuery}
+          onChangeQuery={handleQueryChange}
           onClose={closePicker}
           placeholder="Search by name or symbol (e.g. BTC, Solana)"
           theme={theme}
           accent={accent}
         >
-          {results.length === 0 ? (
+          {searching ? (
+            <View style={emptyS.wrap}>
+              <ActivityIndicator color={accent.solid} />
+            </View>
+          ) : results.length === 0 ? (
             <View style={emptyS.wrap}>
               <Text style={[emptyS.text, { color: theme.sub }]}>
                 {query ? `No match for "${query}"` : 'Type to search coins…'}
               </Text>
             </View>
           ) : (
-            results.map((c: CryptoInfo, i: number) => (
+            results.map((c, i) => (
               <SearchResultRow
-                key={c.symbol}
+                key={c.id}
                 symbol={c.symbol}
                 name={c.name}
+                price={c.price > 0 ? c.price : undefined}
+                currency="USD"
                 color={color}
                 theme={theme}
                 isLast={i === results.length - 1}
@@ -667,28 +704,8 @@ function CryptoEntry({ fields, setField, setMany, theme, accent, base, errors }:
         color={color}
         theme={theme}
         accent={accent}
-        onChangePress={() => setMany({ symbol: '', qty: '', chain: '' })}
+        onChangePress={() => setMany({ symbol: '', qty: '' })}
       />
-
-      {chains.length > 0 && (
-        <>
-          <EntryLabel text="Network / chain" theme={theme} />
-          <View style={chainS.row}>
-            {chains.map(ch => {
-              const on = fields.chain === ch;
-              return (
-                <TouchableOpacity
-                  key={ch}
-                  onPress={() => setField('chain', ch)}
-                  style={[chainS.chip, { borderColor: on ? color : theme.line, backgroundColor: on ? color + '14' : theme.cardBg }]}
-                >
-                  <Text style={[chainS.chipText, { color: on ? color : theme.sub }]}>{ch}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </>
-      )}
 
       <EntryLabel text={`Amount (${fields.symbol})`} theme={theme} />
       <QtyField value={fields.qty} onChangeText={v => setField('qty', v)} placeholder="0.00" hasError={errors.qty} theme={theme} />
@@ -705,12 +722,6 @@ function CryptoEntry({ fields, setField, setMany, theme, accent, base, errors }:
     </View>
   );
 }
-const chainS = StyleSheet.create({
-  row:      { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 22 },
-  chip:     { borderWidth: 1.5, borderRadius: 11, paddingHorizontal: 13, paddingVertical: 8 },
-  chipText: { fontSize: 13.5, fontFamily: FONTS.jakartaBold },
-});
-
 // ─── GoldEntry ────────────────────────────────────────────────────────────────
 
 const GOLD_PURITY_INFO: Record<'24K' | '22K', { fineness: string; perGram: (r: ReturnType<typeof getGoldRates>) => number }> = {
@@ -793,7 +804,7 @@ export function TrackedEntry({ cat, fields, setField, setMany, theme, accent, ba
 
 export function trackedSubtitle(track: import('../../types').AssetTrack): string {
   if (track.kind === 'stock')  return `${track.symbol} · ${track.exchange} · ${track.qty} sh`;
-  if (track.kind === 'crypto') return `${track.qty} ${track.symbol} · ${track.chain}`;
+  if (track.kind === 'crypto') return `${track.qty} ${track.symbol}`;
   if (track.kind === 'gold')   return `${track.purity} · ${track.weight} g`;
   return '';
 }
