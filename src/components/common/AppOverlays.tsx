@@ -6,6 +6,7 @@ import { DeleteConfirm } from './DeleteConfirm';
 import { CurrencyPicker } from './CurrencyPicker';
 import { CategoriesSheet } from './CategoriesSheet';
 import { OnboardingScreen } from '../../navigation/screens/Onboarding';
+import { Toast } from './Toast';
 
 // Renders all full-screen overlays above the main navigation.
 // This component must be inside AppProvider.
@@ -15,6 +16,7 @@ export function AppOverlays() {
 
   return (
     <>
+      <Toast />
       <CurrencyPicker />
       <CategoriesSheet />
       {deleteTarget && <DeleteConfirm />}

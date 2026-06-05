@@ -6,6 +6,7 @@ import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DatabaseProvider } from './db/DatabaseContext';
 import { AppProvider } from './store/AppContext';
+import { ToastProvider } from './store/ToastContext';
 import { Navigation } from './navigation';
 import { AppOverlays } from './components/common/AppOverlays';
 import { useAppFonts } from './hooks/useFonts';
@@ -47,7 +48,9 @@ export function App() {
     <SafeAreaProvider>
       <DatabaseProvider>
         <AppProvider>
-          <AppShell fontsLoaded={fontsLoaded} />
+          <ToastProvider>
+            <AppShell fontsLoaded={fontsLoaded} />
+          </ToastProvider>
         </AppProvider>
       </DatabaseProvider>
     </SafeAreaProvider>

@@ -18,10 +18,12 @@ import { fetchCryptoPrices, type CryptoLTP } from '../../services/cryptoPriceSer
 import { getCryptoIdsBySymbols } from '../../db/queries/crypto_info';
 import { useDatabase } from '../../db/DatabaseContext';
 import { useAppForeground } from '../../hooks/useAppForeground';
+import { useToast } from '../../store/ToastContext';
 
 export function AssetsScreen() {
   const { assets, baseCurrency, setDeleteTarget, customCategories } = useAppState();
   const db = useDatabase();
+  const toast = useToast();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const navigation = useNavigation<any>();
   const { theme, accent } = useTheme();
@@ -80,9 +82,9 @@ export function AssetsScreen() {
         }
       }
     } catch {
-      // fall back to stored prices silently
+      toast('Price fetch could not be completed. Try again later.', 'error');
     }
-  }, [stockInstrumentKeys, cryptoAssets, db]);
+  }, [stockInstrumentKeys, cryptoAssets, db, toast]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
