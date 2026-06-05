@@ -9,11 +9,11 @@ const SCREEN_H = Dimensions.get('window').height;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './Icon';
 import {
-  searchStocksAPI, getStockQuoteAPI,
+  getStockLTPAPI, searchStocksAPI,
   searchCryptos, getCryptoChains, getGoldRates,
-  type StockSearchResult, type CryptoInfo,
+  type StockInfo, type CryptoInfo,
 } from '../../services/marketData';
-import { formatMoney, convert } from '../../utils/currency';
+import { formatMoney, convert, CURRENCIES } from '../../utils/currency';
 import { CAT } from '../../data/categories';
 import type { ThemeColors, AccentDef } from '../../constants/theme';
 import { FONTS } from '../../constants/fonts';
@@ -23,6 +23,7 @@ import { FONTS } from '../../constants/fonts';
 export type TrackedFormFields = {
   symbol: string;
   exchange: string;
+  instrumentKey: string;
   chain: string;
   purity: '24K' | '22K';
   qty: string;
@@ -37,6 +38,7 @@ export type TrackedErrors = {
   symbol?: boolean;
   qty?: boolean;
   weight?: boolean;
+  price?: boolean;
 };
 
 type Props = {
@@ -157,7 +159,12 @@ function SelectedCard({ symbol, name, exchange, price, changePct, currency, colo
   );
 
   return (
-    <View style={[selectedS.card, { backgroundColor: theme.chipBg }]}>
+    <TouchableOpacity
+      onPress={onChangePress}
+      accessibilityLabel="Change instrument"
+      accessibilityRole="button"
+      style={[selectedS.card, { backgroundColor: theme.chipBg }]}
+    >
       <TickerBadge symbol={symbol} color={color} size={44} />
       <View style={selectedS.info}>
         <View style={selectedS.titleRow}>
@@ -166,10 +173,8 @@ function SelectedCard({ symbol, name, exchange, price, changePct, currency, colo
         </View>
         {priceRow}
       </View>
-      <TouchableOpacity onPress={onChangePress} accessibilityLabel="Change instrument">
-        <Text style={[selectedS.changeBtn, { color: accent.solid }]}>Change</Text>
-      </TouchableOpacity>
-    </View>
+      <Text style={[selectedS.changeBtn, { color: accent.solid }]}>Change</Text>
+    </TouchableOpacity>
   );
 }
 const selectedS = StyleSheet.create({
@@ -243,6 +248,13 @@ function QtyField({ value, onChangeText, placeholder, hasError, theme }: {
 const qtyS = StyleSheet.create({
   wrap:  { borderRadius: 14, borderWidth: 1.5, paddingHorizontal: 16, paddingVertical: 4, marginBottom: 22 },
   input: { fontSize: 24, fontFamily: FONTS.groteskBold, paddingVertical: 12 },
+});
+const priceS = StyleSheet.create({
+  wrap:     { borderRadius: 14, borderWidth: 1.5, marginBottom: 12 },
+  input:    { fontSize: 16, fontFamily: FONTS.jakarta, paddingHorizontal: 16, paddingVertical: 14 },
+  chipRow:  { gap: 7, paddingBottom: 4, marginBottom: 22 },
+  chip:     { borderWidth: 1.5, borderRadius: 11, paddingHorizontal: 13, paddingVertical: 7, flexShrink: 0 },
+  chipText: { fontSize: 13.5, fontFamily: FONTS.groteskSemiBold },
 });
 
 // ─── SearchPickerModal ────────────────────────────────────────────────────────
@@ -363,52 +375,48 @@ const triggerS = StyleSheet.create({
 function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: Omit<Props, 'cat'>) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<StockSearchResult[]>([]);
+  const [results, setResults] = useState<StockInfo[]>([]);
   const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
   const [quoteFetching, setQuoteFetching] = useState(false);
   const [priceUnavailable, setPriceUnavailable] = useState(false);
+  const [manualPrice, setManualPrice] = useState('');
   const color = CAT['stocks']?.color ?? accent.solid;
 
-  // Debounced API search — fires 350 ms after the user stops typing
-  useEffect(() => {
-    if (!pickerOpen) return;
-    if (!query.trim()) {
-      setResults([]);
-      setSearchError(null);
+  const handleQueryChange = useCallback((q: string) => {
+    setQuery(q);
+    if (q.trim()) {
+      setSearching(true);
+    } else {
       setSearching(false);
-      return;
+      setResults([]);
     }
-    setSearching(true);
-    setSearchError(null);
-    const timer = setTimeout(async () => {
-      try {
-        const data = await searchStocksAPI(query);
-        setResults(data);
-      } catch {
-        setSearchError('Search failed. Check your connection.');
-        setResults([]);
-      } finally {
-        setSearching(false);
-      }
-    }, 350);
+  }, []);
+
+  useEffect(() => {
+    if (!pickerOpen || !query.trim()) return;
+
+    const timer = setTimeout(() => {
+      searchStocksAPI(query)
+        .then(rows => setResults(rows))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 300);
     return () => clearTimeout(timer);
   }, [query, pickerOpen]);
 
-  const pick = useCallback(async (s: StockSearchResult) => {
-    // Close picker immediately, set basic metadata (price = 0 until quote arrives)
+  const pick = useCallback(async (s: StockInfo) => {
     setPickerOpen(false);
     setQuery('');
     setResults([]);
     setPriceUnavailable(false);
-    setMany({ symbol: s.symbol, exchange: s.exchange, price: 0, changePct: 0, currency: s.currency, name: s.name });
+    setManualPrice('');
+    setMany({ symbol: s.symbol, exchange: s.exchange, price: 0, changePct: 0, currency: s.currency, name: s.name, instrumentKey: s.instrument_key });
 
-    // Fetch real-time quote
     setQuoteFetching(true);
     try {
-      const quote = await getStockQuoteAPI(s.symbol);
+      const quote = await getStockLTPAPI(s.instrument_key);
       if (quote) {
-        setMany({ price: quote.price, changePct: quote.changePercentage, currency: s.currency });
+        setMany({ price: quote.price, changePct: quote.changePct });
       } else {
         setPriceUnavailable(true);
       }
@@ -419,8 +427,8 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
     }
   }, [setMany]);
 
-  const openPicker  = () => { setQuery(''); setResults([]); setSearchError(null); setPickerOpen(true); };
-  const closePicker = () => { setPickerOpen(false); setQuery(''); setResults([]); setSearchError(null); };
+  const openPicker  = () => { setQuery(''); setResults([]); setSearching(false); setPickerOpen(true); };
+  const closePicker = () => { setPickerOpen(false); setQuery(''); setResults([]); setSearching(false); };
 
   if (!fields.symbol) {
     return (
@@ -428,7 +436,7 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
         <EntryLabel text="Find a stock" theme={theme} />
 
         <SearchTrigger
-          placeholder="Search by name or symbol (e.g. TCS, Apple)"
+          placeholder="Search by name or symbol (e.g. TCS, AAPL)"
           hasError={errors.symbol}
           theme={theme}
           onPress={openPicker}
@@ -437,19 +445,15 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
         <SearchPickerModal
           visible={pickerOpen}
           query={query}
-          onChangeQuery={setQuery}
+          onChangeQuery={handleQueryChange}
           onClose={closePicker}
-          placeholder="Search by name or symbol (e.g. TCS, Apple)"
+          placeholder="Search by name or symbol (e.g. TCS, AAPL)"
           theme={theme}
           accent={accent}
         >
           {searching ? (
             <View style={emptyS.wrap}>
               <ActivityIndicator color={accent.solid} />
-            </View>
-          ) : searchError ? (
-            <View style={emptyS.wrap}>
-              <Text style={[emptyS.text, { color: theme.neg }]}>{searchError}</Text>
             </View>
           ) : results.length === 0 ? (
             <View style={emptyS.wrap}>
@@ -492,12 +496,84 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
         color={color}
         theme={theme}
         accent={accent}
-        onChangePress={() => { setMany({ symbol: '', qty: '' }); setPriceUnavailable(false); }}
+        onChangePress={openPicker}
         quoteFetching={quoteFetching}
         priceUnavailable={priceUnavailable}
       />
+      <SearchPickerModal
+        visible={pickerOpen}
+        query={query}
+        onChangeQuery={handleQueryChange}
+        onClose={closePicker}
+        placeholder="Search by name or symbol (e.g. TCS, AAPL)"
+        theme={theme}
+        accent={accent}
+      >
+        {searching ? (
+          <View style={emptyS.wrap}>
+            <ActivityIndicator color={accent.solid} />
+          </View>
+        ) : results.length === 0 ? (
+          <View style={emptyS.wrap}>
+            <Text style={[emptyS.text, { color: theme.sub }]}>
+              {query.trim() ? `No results for "${query}"` : 'Type to search stocks…'}
+            </Text>
+          </View>
+        ) : (
+          results.map((s, i) => (
+            <SearchResultRow
+              key={s.symbol + s.exchange}
+              symbol={s.symbol}
+              name={s.name}
+              exchange={s.exchange}
+              color={color}
+              theme={theme}
+              isLast={i === results.length - 1}
+              onPress={() => pick(s)}
+            />
+          ))
+        )}
+      </SearchPickerModal>
       <EntryLabel text="Quantity (shares)" theme={theme} />
       <QtyField value={fields.qty} onChangeText={v => setField('qty', v)} placeholder="0" hasError={errors.qty} theme={theme} />
+      {priceUnavailable && (
+        <>
+          <EntryLabel text="Price per share" theme={theme} />
+          <View style={[priceS.wrap, { backgroundColor: theme.chipBg, borderColor: errors.price ? theme.neg : 'transparent' }]}>
+            <TextInput
+              value={manualPrice}
+              onChangeText={v => {
+                const clean = v.replace(/[^0-9.]/g, '');
+                setManualPrice(clean);
+                setMany({ price: parseFloat(clean) || 0 });
+              }}
+              keyboardType="decimal-pad"
+              placeholder="Enter current price"
+              placeholderTextColor={theme.faint}
+              style={[priceS.input, { color: theme.text }]}
+            />
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={priceS.chipRow}>
+            {CURRENCIES.map(c => {
+              const isSelected = fields.currency === c.code;
+              return (
+                <TouchableOpacity
+                  key={c.code}
+                  onPress={() => setField('currency', c.code)}
+                  style={[priceS.chip, {
+                    borderColor: isSelected ? accent.solid : theme.line,
+                    backgroundColor: isSelected ? accent.solid + '20' : theme.chipBg,
+                  }]}
+                >
+                  <Text style={[priceS.chipText, { color: isSelected ? accent.solid : theme.sub }]}>
+                    {c.symbol} {c.code}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </>
+      )}
       {qty > 0 && fields.price > 0 && !quoteFetching && (
         <ValueReadout
           value={value}
@@ -637,6 +713,11 @@ const chainS = StyleSheet.create({
 
 // ─── GoldEntry ────────────────────────────────────────────────────────────────
 
+const GOLD_PURITY_INFO: Record<'24K' | '22K', { fineness: string; perGram: (r: ReturnType<typeof getGoldRates>) => number }> = {
+  '24K': { fineness: '99.9%', perGram: r => r.perGram24k },
+  '22K': { fineness: '91.6%', perGram: r => r.perGram22k },
+};
+
 function GoldEntry({ fields, setField, theme, accent, base, errors }: Omit<Props, 'cat' | 'setMany'> & { setMany?: unknown }) {
   const rates = getGoldRates();
   const goldColor = CAT['gold']?.color ?? '#EAB308';
@@ -649,14 +730,21 @@ function GoldEntry({ fields, setField, theme, accent, base, errors }: Omit<Props
       <View style={goldS.purRow}>
         {(['24K', '22K'] as const).map(p => {
           const on = fields.purity === p;
+          const info = GOLD_PURITY_INFO[p];
+          const pgPrice = info.perGram(rates);
           return (
             <TouchableOpacity
               key={p}
               onPress={() => setField('purity', p)}
               style={[goldS.purBtn, { borderColor: on ? goldColor : theme.line, backgroundColor: on ? goldColor + '14' : theme.cardBg }]}
+              accessibilityLabel={`${p} gold, ${info.fineness}, ${formatMoney(pgPrice, rates.currency)} per gram`}
+              accessibilityRole="button"
             >
               <Text style={[goldS.purLabel, { color: on ? theme.text : theme.sub }]}>{p}</Text>
-              <Text style={[goldS.purSub, { color: theme.sub }]}>{p === '24K' ? '99.9%' : '91.6%'}</Text>
+              <Text style={[goldS.purSub, { color: theme.sub }]}>{info.fineness}</Text>
+              <Text style={[goldS.purPrice, { color: on ? goldColor : theme.sub }]}>
+                {formatMoney(pgPrice, rates.currency)}/g
+              </Text>
             </TouchableOpacity>
           );
         })}
@@ -672,7 +760,7 @@ function GoldEntry({ fields, setField, theme, accent, base, errors }: Omit<Props
           base={base}
           theme={theme}
           accent={accent}
-          formulaLine={`${weight} g × ${formatMoney(perGram, rates.currency)}/g (${fields.purity}) · today +${rates.changePct.toFixed(2)}%`}
+          formulaLine={`${weight} g × ${formatMoney(perGram, rates.currency)}/g (${fields.purity})`}
         />
       )}
     </View>
@@ -683,6 +771,7 @@ const goldS = StyleSheet.create({
   purBtn:   { flex: 1, borderWidth: 1.5, borderRadius: 14, paddingVertical: 13, paddingHorizontal: 8, alignItems: 'center', gap: 3 },
   purLabel: { fontSize: 17, fontFamily: FONTS.jakartaExtraBold },
   purSub:   { fontSize: 11.5, fontFamily: FONTS.jakartaSemiBold },
+  purPrice: { fontSize: 11.5, fontFamily: FONTS.groteskBold, marginTop: 2 },
 });
 
 // ─── Shared empty-state styles ────────────────────────────────────────────────

@@ -1,14 +1,15 @@
 // ─── Market data layer for live-tracked assets (stocks, crypto, gold) ────────
 // Placeholder price book — static seed data so the app works offline.
-// Replace getStockQuote / getCryptoQuote / getGoldRates with real API calls.
+// Gold rates are fetched live; see goldPriceService.ts.
+
+import { getLiveGoldRates } from './goldPriceService';
 
 export type StockInfo = {
   symbol: string;
   name: string;
   exchange: string;
   currency: string;
-  price: number;
-  changePct: number;
+  instrument_key: string;
 };
 
 export type CryptoInfo = {
@@ -26,39 +27,6 @@ export type GoldRates = {
   changePct: number;
 };
 
-// ── Stock catalog ──────────────────────────────────────────────────────────────
-const STOCK_CATALOG: StockInfo[] = [
-  // NSE — INR
-  { symbol: 'RELIANCE',   name: 'Reliance Industries',       exchange: 'NSE',    currency: 'INR', price: 2945.50,  changePct:  0.82 },
-  { symbol: 'TCS',        name: 'Tata Consultancy Services', exchange: 'NSE',    currency: 'INR', price: 4120.00,  changePct: -0.34 },
-  { symbol: 'HDFCBANK',   name: 'HDFC Bank',                 exchange: 'NSE',    currency: 'INR', price: 1685.30,  changePct:  1.12 },
-  { symbol: 'INFY',       name: 'Infosys',                   exchange: 'NSE',    currency: 'INR', price: 1842.75,  changePct:  0.56 },
-  { symbol: 'ICICIBANK',  name: 'ICICI Bank',                exchange: 'NSE',    currency: 'INR', price: 1248.60,  changePct:  0.91 },
-  { symbol: 'SBIN',       name: 'State Bank of India',       exchange: 'NSE',    currency: 'INR', price: 842.15,   changePct: -0.22 },
-  { symbol: 'BHARTIARTL', name: 'Bharti Airtel',             exchange: 'NSE',    currency: 'INR', price: 1576.40,  changePct:  1.45 },
-  { symbol: 'ITC',        name: 'ITC Limited',               exchange: 'NSE',    currency: 'INR', price: 478.90,   changePct:  0.18 },
-  { symbol: 'LT',         name: 'Larsen & Toubro',           exchange: 'NSE',    currency: 'INR', price: 3680.25,  changePct:  0.67 },
-  { symbol: 'HINDUNILVR', name: 'Hindustan Unilever',        exchange: 'NSE',    currency: 'INR', price: 2402.10,  changePct: -0.41 },
-  { symbol: 'BAJFINANCE', name: 'Bajaj Finance',             exchange: 'NSE',    currency: 'INR', price: 7185.00,  changePct:  2.03 },
-  { symbol: 'TATAMOTORS', name: 'Tata Motors',               exchange: 'NSE',    currency: 'INR', price: 985.20,   changePct:  1.88 },
-  { symbol: 'WIPRO',      name: 'Wipro',                     exchange: 'NSE',    currency: 'INR', price: 562.45,   changePct:  0.34 },
-  // BSE — INR
-  { symbol: 'TITAN',      name: 'Titan Company',             exchange: 'BSE',    currency: 'INR', price: 3450.00,  changePct:  0.72 },
-  { symbol: 'ASIANPAINT', name: 'Asian Paints',              exchange: 'BSE',    currency: 'INR', price: 2890.50,  changePct: -0.38 },
-  { symbol: 'NESTLEIND',  name: 'Nestlé India',              exchange: 'BSE',    currency: 'INR', price: 2510.00,  changePct:  0.21 },
-  { symbol: 'MARUTI',     name: 'Maruti Suzuki',             exchange: 'BSE',    currency: 'INR', price: 12880.00, changePct: -0.55 },
-  // NASDAQ / NYSE — USD
-  { symbol: 'AAPL',  name: 'Apple Inc.',        exchange: 'NASDAQ', currency: 'USD', price: 229.87, changePct:  0.64 },
-  { symbol: 'MSFT',  name: 'Microsoft',         exchange: 'NASDAQ', currency: 'USD', price: 424.30, changePct:  0.41 },
-  { symbol: 'GOOGL', name: 'Alphabet (Google)', exchange: 'NASDAQ', currency: 'USD', price: 167.55, changePct:  1.02 },
-  { symbol: 'AMZN',  name: 'Amazon',            exchange: 'NASDAQ', currency: 'USD', price: 186.40, changePct: -0.33 },
-  { symbol: 'NVDA',  name: 'NVIDIA',            exchange: 'NASDAQ', currency: 'USD', price: 131.26, changePct:  2.85 },
-  { symbol: 'TSLA',  name: 'Tesla',             exchange: 'NASDAQ', currency: 'USD', price: 248.50, changePct: -1.42 },
-  { symbol: 'META',  name: 'Meta Platforms',    exchange: 'NASDAQ', currency: 'USD', price: 563.27, changePct:  0.88 },
-  { symbol: 'NFLX',  name: 'Netflix',           exchange: 'NASDAQ', currency: 'USD', price: 697.05, changePct:  0.51 },
-  { symbol: 'JPM',   name: 'JPMorgan Chase',    exchange: 'NYSE',   currency: 'USD', price: 212.80, changePct:  0.29 },
-  { symbol: 'KO',    name: 'Coca-Cola',         exchange: 'NYSE',   currency: 'USD', price: 62.45,  changePct: -0.12 },
-];
 
 // ── Crypto catalog ─────────────────────────────────────────────────────────────
 const CRYPTO_CATALOG: CryptoInfo[] = [
@@ -80,33 +48,18 @@ const CRYPTO_CATALOG: CryptoInfo[] = [
   { symbol: 'TON',  name: 'Toncoin',   price: 5.30,     changePct:  1.10, chains: ['TON'] },
 ];
 
-// ── Gold rates ─────────────────────────────────────────────────────────────────
-const GOLD_RATES: GoldRates = {
+// ── Gold rates — fallback used when live data is not yet loaded ────────────────
+const GOLD_RATES_FALLBACK: GoldRates = {
   currency: 'INR',
   perGram24k: 7320,
   perGram22k: 6710,
-  changePct: 0.45,
+  changePct: 0,
 };
 
 // ── Lookup maps ───────────────────────────────────────────────────────────────
-const STOCK_BY_SYMBOL = Object.fromEntries(STOCK_CATALOG.map(s => [s.symbol, s]));
 const CRYPTO_BY_SYMBOL = Object.fromEntries(CRYPTO_CATALOG.map(c => [c.symbol, c]));
 
 // ── Search helpers ────────────────────────────────────────────────────────────
-
-export function searchStocks(query: string): StockInfo[] {
-  const t = query.trim().toLowerCase();
-  const list = t
-    ? STOCK_CATALOG.filter(s =>
-        s.symbol.toLowerCase().includes(t) || s.name.toLowerCase().includes(t),
-      )
-    : STOCK_CATALOG;
-  return list.slice().sort((a, b) => {
-    const ai = a.symbol.toLowerCase().indexOf(t);
-    const bi = b.symbol.toLowerCase().indexOf(t);
-    return (ai === 0 ? -1 : 0) - (bi === 0 ? -1 : 0);
-  });
-}
 
 export function searchCryptos(query: string): CryptoInfo[] {
   const t = query.trim().toLowerCase();
@@ -121,12 +74,16 @@ export function getCryptoChains(symbol: string): string[] {
 }
 
 export function getGoldRates(): GoldRates {
-  return GOLD_RATES;
-}
-
-export function getStockQuote(symbol: string): Pick<StockInfo, 'price' | 'changePct' | 'currency'> | null {
-  const s = STOCK_BY_SYMBOL[symbol];
-  return s ? { price: s.price, changePct: s.changePct, currency: s.currency } : null;
+  const live = getLiveGoldRates();
+  if (live) {
+    return {
+      currency: live.currency,
+      perGram24k: live.priceGram24k,
+      perGram22k: live.priceGram22k,
+      changePct: 0,
+    };
+  }
+  return GOLD_RATES_FALLBACK;
 }
 
 export function getCryptoQuote(symbol: string): { price: number; changePct: number; currency: 'USD' } | null {
@@ -134,51 +91,53 @@ export function getCryptoQuote(symbol: string): { price: number; changePct: numb
   return c ? { price: c.price, changePct: c.changePct, currency: 'USD' } : null;
 }
 
-// ── Stock search API ──────────────────────────────────────────────────────────
+// ── Stock APIs ────────────────────────────────────────────────────────────────
 
-export type StockSearchResult = {
-  symbol: string;
+const INSTRUMENTS_BASE = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/instruments';
+
+type LTPQuote = {
+  instrumentKey: string;
+  lastPrice: number;
+  closePrice: number;
+  [key: string]: unknown;
+};
+
+export async function getStockLTPAPI(instrumentKey: string): Promise<{ price: number; changePct: number } | null> {
+  const url = `${INSTRUMENTS_BASE}/ltp?instrument_key=${encodeURIComponent(instrumentKey)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = (await res.json()) as { success: boolean; data?: { quotes?: LTPQuote[] } };
+  const quote = json.data?.quotes?.[0];
+  if (!quote) return null;
+  const changePct = quote.closePrice > 0
+    ? ((quote.lastPrice - quote.closePrice) / quote.closePrice) * 100
+    : 0;
+  return { price: quote.lastPrice, changePct };
+}
+
+type InstrumentItem = {
+  trading_symbol: string;
   name: string;
-  currency: string;
-  exchangeFullName: string;
   exchange: string;
+  instrument_key: string;
+  [key: string]: unknown;
 };
 
-const API_BASE = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/stocks';
-
-export async function searchStocksAPI(query: string): Promise<StockSearchResult[]> {
-  const q = query.trim();
-  if (!q) return [];
-  const res = await fetch(`${API_BASE}/search?query=${encodeURIComponent(q)}`);
+export async function searchStocksAPI(query: string, limit = 20): Promise<StockInfo[]> {
+  const url = `${INSTRUMENTS_BASE}/search?query=${encodeURIComponent(query)}&segments=EQ&page_number=1&records=${limit}&atm_offset=0`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = (await res.json()) as { success: boolean; data: StockSearchResult[] };
-  return json.data ?? [];
+  const json = (await res.json()) as { success: boolean; data?: { instruments?: InstrumentItem[] } };
+  if (!json.success || !json.data?.instruments) return [];
+  return json.data.instruments.map(item => ({
+    symbol: item.trading_symbol,
+    name: item.name,
+    exchange: item.exchange,
+    currency: ['NSE', 'BSE'].includes(item.exchange) ? 'INR' : 'USD',
+    instrument_key: item.instrument_key,
+  }));
 }
 
-export type StockQuoteResult = {
-  symbol: string;
-  name: string;
-  price: number;
-  changePercentage: number;
-};
-
-// Returns null when the backend cannot provide a quote for the symbol
-// (e.g. exchange-suffixed symbols like RELIANCE.NS).
-export async function getStockQuoteAPI(symbol: string): Promise<StockQuoteResult | null> {
-  const res = await fetch(`${API_BASE}/${encodeURIComponent(symbol)}/quote`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = (await res.json()) as { success: boolean; data?: StockQuoteResult };
-  return json.success && json.data ? json.data : null;
-}
-
-// Try to look up a static price for a symbol returned by the API.
-// The API uses suffixes (e.g. "RELIANCE.NS") while the catalog uses bare symbols.
-export function getStaticStockQuote(symbol: string): Pick<StockInfo, 'price' | 'changePct' | 'currency'> | null {
-  const direct = getStockQuote(symbol);
-  if (direct) return direct;
-  const base = symbol.split('.')[0];
-  return getStockQuote(base);
-}
 
 export const TRACKED_CATS = ['stocks', 'crypto', 'gold'] as const;
 export type TrackedCat = (typeof TRACKED_CATS)[number];

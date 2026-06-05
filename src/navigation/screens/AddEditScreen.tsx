@@ -40,6 +40,7 @@ type FormState = {
   recurringContributionFrequency: RecurringContributionFrequency;
   symbol: string;
   exchange: string;
+  instrumentKey: string;
   chain: string;
   purity: '24K' | '22K';
   qty: string;
@@ -55,6 +56,7 @@ type FormErrors = {
   symbol?: boolean;
   qty?: boolean;
   weight?: boolean;
+  price?: boolean;
 };
 
 const BLANK_FORM: FormState = {
@@ -68,6 +70,7 @@ const BLANK_FORM: FormState = {
   recurringContributionFrequency: 'MONTHLY',
   symbol: '',
   exchange: '',
+  instrumentKey: '',
   chain: '',
   purity: '24K',
   qty: '',
@@ -135,7 +138,7 @@ export function AddEditScreen() {
 
   const chooseCat = (id: string) => {
     if (id === form.cat) return;
-    setForm(prev => ({ ...prev, cat: id, symbol: '', qty: '', chain: '', weight: '' }));
+    setForm(prev => ({ ...prev, cat: id, symbol: '', instrumentKey: '', qty: '', chain: '', weight: '' }));
   };
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -234,6 +237,7 @@ export function AddEditScreen() {
     const qty = parseFloat(form.qty);
     if (!form.symbol) errs.symbol = true;
     if (!qty || qty <= 0) errs.qty = true;
+    if (form.cat === 'stocks' && (!form.price || form.price <= 0)) errs.price = true;
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
@@ -258,12 +262,12 @@ export function AddEditScreen() {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const trackedFields: TrackedFormFields = {
-    symbol: form.symbol, exchange: form.exchange, chain: form.chain,
+    symbol: form.symbol, exchange: form.exchange, instrumentKey: form.instrumentKey, chain: form.chain,
     purity: form.purity, qty: form.qty, weight: form.weight,
     price: form.price, changePct: form.changePct,
     name: form.name, currency: form.currency,
   };
-  const trackedErrors: TrackedErrors = { symbol: errors.symbol, qty: errors.qty, weight: errors.weight };
+  const trackedErrors: TrackedErrors = { symbol: errors.symbol, qty: errors.qty, weight: errors.weight, price: errors.price };
   const convertedValue = !tracked && form.currency !== 'INR' && parseFloat(form.value) > 0
     ? convert(parseFloat(form.value) || 0, form.currency, 'INR')
     : null;

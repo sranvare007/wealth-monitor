@@ -27,6 +27,7 @@ import {
 import { useAppForeground } from '../hooks/useAppForeground';
 import { loadExchangeRates } from '../services/currencyService';
 import { setExchangeRates } from '../utils/currency';
+import { loadGoldPrices } from '../services/goldPriceService';
 
 // ─── Context shape ────────────────────────────────────────────────────────────
 
@@ -117,6 +118,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getSetting(db, 'DARK_MODE'),
         getAllCustomCategories(db),
         loadExchangeRates(db),
+        // Gold prices are loaded here so _liveRates is populated before the
+        // loading screen clears and the user can reach the AddEdit gold form.
+        loadGoldPrices(db),
       ]);
 
       setExchangeRates(exchangeRates);

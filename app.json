@@ -33,6 +33,12 @@
       ],
       "expo-sqlite",
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5f0506ef-1949-4a03-8758-1ee22b5c9255"
+      }
+    },
+    "owner": "srnanvare007"
   }
 }

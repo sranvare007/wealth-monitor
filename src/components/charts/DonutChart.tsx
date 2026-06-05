@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import type { ThemeColors } from '../../constants/theme';
 import type { DistributionSegment } from '../../types';
@@ -11,10 +11,14 @@ type Props = {
   base: string;
   theme: ThemeColors;
   size?: number;
+  selected?: string | null;
+  onSelect?: (id: string | null) => void;
 };
 
-export function DonutChart({ segments, base, theme, size = 200 }: Props) {
-  const [selected, setSelected] = useState<string | null>(null);
+export function DonutChart({ segments, base, theme, size = 200, selected: externalSelected, onSelect }: Props) {
+  const [internalSelected, setInternalSelected] = useState<string | null>(null);
+  const selected = externalSelected !== undefined ? externalSelected : internalSelected;
+  const setSelected = onSelect ?? setInternalSelected;
 
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
   const strokeWidth = 22;
@@ -40,7 +44,7 @@ export function DonutChart({ segments, base, theme, size = 200 }: Props) {
   const centerLabel = sel ? sel.label : 'Total Assets';
   const centerPct = sel ? Math.round((sel.value / total) * 100) + '%' : null;
 
-  const toggle = (id: string) => setSelected(prev => (prev === id ? null : id));
+  const toggle = (id: string) => setSelected(selected === id ? null : id);
   const reset = () => setSelected(null);
 
   return (
@@ -68,12 +72,8 @@ export function DonutChart({ segments, base, theme, size = 200 }: Props) {
           />
         ))}
       </Svg>
-      {/* center label — absolute overlay */}
-      <TouchableOpacity
-        onPress={reset}
-        activeOpacity={1}
-        style={[StyleSheet.absoluteFillObject, styles.center]}
-      >
+      {/* center label — pointer-events:none so taps reach the SVG arcs */}
+      <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.center]}>
         <Text style={[styles.centerLabel, { color: theme.sub }]} numberOfLines={1}>
           {centerLabel}
         </Text>
@@ -83,7 +83,7 @@ export function DonutChart({ segments, base, theme, size = 200 }: Props) {
         {centerPct && sel && (
           <Text style={[styles.centerPct, { color: sel.color }]}>{centerPct}</Text>
         )}
-      </TouchableOpacity>
+      </View>
     </View>
   );
 }
