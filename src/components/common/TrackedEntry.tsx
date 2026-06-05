@@ -9,12 +9,10 @@ const SCREEN_H = Dimensions.get('window').height;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './Icon';
 import {
-  getStockQuoteAPI,
+  getStockLTPAPI, searchStocksAPI,
   searchCryptos, getCryptoChains, getGoldRates,
-  type CryptoInfo,
+  type StockInfo, type CryptoInfo,
 } from '../../services/marketData';
-import { searchStocks, type StockInfo } from '../../db/queries/stocks_info';
-import { useDatabase } from '../../db/DatabaseContext';
 import { formatMoney, convert, CURRENCIES } from '../../utils/currency';
 import { CAT } from '../../data/categories';
 import type { ThemeColors, AccentDef } from '../../constants/theme';
@@ -25,6 +23,7 @@ import { FONTS } from '../../constants/fonts';
 export type TrackedFormFields = {
   symbol: string;
   exchange: string;
+  instrumentKey: string;
   chain: string;
   purity: '24K' | '22K';
   qty: string;
@@ -374,7 +373,6 @@ const triggerS = StyleSheet.create({
 // ─── StockEntry ───────────────────────────────────────────────────────────────
 
 function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: Omit<Props, 'cat'>) {
-  const db = useDatabase();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<StockInfo[]>([]);
@@ -384,41 +382,41 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
   const [manualPrice, setManualPrice] = useState('');
   const color = CAT['stocks']?.color ?? accent.solid;
 
-  // Debounced local DB search — spinner shows immediately on keystroke,
-  // query fires after 300 ms of inactivity.
-  useEffect(() => {
-    if (!pickerOpen) return;
-    if (!query.trim()) { setResults([]); setSearching(false); return; }
+  const handleQueryChange = useCallback((q: string) => {
+    setQuery(q);
+    if (q.trim()) {
+      setSearching(true);
+    } else {
+      setSearching(false);
+      setResults([]);
+    }
+  }, []);
 
-    setSearching(true);
-    const timer = setTimeout(async () => {
-      try {
-        const rows = await searchStocks(db, query, 20);
-        setResults(rows);
-      } catch {
-        setResults([]);
-      } finally {
-        setSearching(false);
-      }
+  useEffect(() => {
+    if (!pickerOpen || !query.trim()) return;
+
+    const timer = setTimeout(() => {
+      searchStocksAPI(query)
+        .then(rows => setResults(rows))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, pickerOpen, db]);
+  }, [query, pickerOpen]);
 
   const pick = useCallback(async (s: StockInfo) => {
-    // Close picker and set metadata immediately; price arrives via quote API
     setPickerOpen(false);
     setQuery('');
     setResults([]);
     setPriceUnavailable(false);
     setManualPrice('');
-    setMany({ symbol: s.symbol, exchange: s.exchange, price: 0, changePct: 0, currency: s.currency, name: s.name });
+    setMany({ symbol: s.symbol, exchange: s.exchange, price: 0, changePct: 0, currency: s.currency, name: s.name, instrumentKey: s.instrument_key });
 
-    // Fetch real-time quote
     setQuoteFetching(true);
     try {
-      const quote = await getStockQuoteAPI(s.symbol);
+      const quote = await getStockLTPAPI(s.instrument_key);
       if (quote) {
-        setMany({ price: quote.price, changePct: quote.changePercentage });
+        setMany({ price: quote.price, changePct: quote.changePct });
       } else {
         setPriceUnavailable(true);
       }
@@ -427,7 +425,7 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
     } finally {
       setQuoteFetching(false);
     }
-  }, [setMany, db]);
+  }, [setMany]);
 
   const openPicker  = () => { setQuery(''); setResults([]); setSearching(false); setPickerOpen(true); };
   const closePicker = () => { setPickerOpen(false); setQuery(''); setResults([]); setSearching(false); };
@@ -447,7 +445,7 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
         <SearchPickerModal
           visible={pickerOpen}
           query={query}
-          onChangeQuery={setQuery}
+          onChangeQuery={handleQueryChange}
           onClose={closePicker}
           placeholder="Search by name or symbol (e.g. TCS, AAPL)"
           theme={theme}
@@ -505,7 +503,7 @@ function StockEntry({ fields, setField, setMany, theme, accent, base, errors }: 
       <SearchPickerModal
         visible={pickerOpen}
         query={query}
-        onChangeQuery={setQuery}
+        onChangeQuery={handleQueryChange}
         onClose={closePicker}
         placeholder="Search by name or symbol (e.g. TCS, AAPL)"
         theme={theme}
