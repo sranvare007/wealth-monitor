@@ -10,12 +10,13 @@
     "scheme": "wealthmonitor",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.wealthmonitor"
+      "bundleIdentifier": "com.wealthmonitor",
+      "icon": "./assets/icon.png"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundImage": "./assets/adaptive-icon-background.png"
       },
       "package": "com.wealthmonitor"
     },
