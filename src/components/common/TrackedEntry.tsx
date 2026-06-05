@@ -26,6 +26,7 @@ export type TrackedFormFields = {
   symbol: string;
   exchange: string;
   instrumentKey: string;
+  cryptoId: number;
   purity: '24K' | '22K';
   qty: string;
   weight: string;
@@ -629,7 +630,7 @@ function CryptoEntry({ fields, setField, setMany, theme, accent, base, errors }:
   }, [query, pickerOpen, db]);
 
   const pick = useCallback((c: CryptoInfoRow) => {
-    setMany({ symbol: c.symbol, price: c.price, changePct: c.percent_change_24h, currency: 'USD', name: c.name });
+    setMany({ symbol: c.symbol, cryptoId: c.id, price: c.price, changePct: c.percent_change_24h, currency: 'USD', name: c.name });
     setPickerOpen(false);
     setQuery('');
     setResults([]);

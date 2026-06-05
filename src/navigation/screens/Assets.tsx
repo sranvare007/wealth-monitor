@@ -14,10 +14,14 @@ import { formatMoney, convert } from '../../utils/currency';
 import { relativeDay } from '../../utils/date';
 import { FONTS } from '../../constants/fonts';
 import { fetchStockPrices, type StockLTP } from '../../services/stockPriceService';
+import { fetchCryptoPrices, type CryptoLTP } from '../../services/cryptoPriceService';
+import { getCryptoIdsBySymbols } from '../../db/queries/crypto_info';
+import { useDatabase } from '../../db/DatabaseContext';
 import { useAppForeground } from '../../hooks/useAppForeground';
 
 export function AssetsScreen() {
   const { assets, baseCurrency, setDeleteTarget, customCategories } = useAppState();
+  const db = useDatabase();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const navigation = useNavigation<any>();
   const { theme, accent } = useTheme();
@@ -25,6 +29,9 @@ export function AssetsScreen() {
   const bottomPad = 86 + Math.max(insets.bottom, 8) + 16;
   const [query, setQuery] = useState('');
   const [livePrices, setLivePrices] = useState<Record<string, StockLTP>>({});
+  const [liveCryptoPrices, setLiveCryptoPrices] = useState<Record<number, CryptoLTP>>({});
+  // symbol-keyed fallback for crypto assets saved before cryptoId was added
+  const [liveCryptoPricesBySymbol, setLiveCryptoPricesBySymbol] = useState<Record<string, CryptoLTP>>({});
   const [refreshing, setRefreshing] = useState(false);
 
   const stockInstrumentKeys = useMemo(
@@ -38,15 +45,44 @@ export function AssetsScreen() {
     [assets],
   );
 
+  const cryptoAssets = useMemo(
+    () => assets.filter(a => a.track?.kind === 'crypto') as (typeof assets[0] & { track: Extract<NonNullable<typeof assets[0]['track']>, { kind: 'crypto' }> })[],
+    [assets],
+  );
+
   const loadLivePrices = useCallback(async (force = false) => {
-    if (stockInstrumentKeys.length === 0) return;
+    if (stockInstrumentKeys.length === 0 && cryptoAssets.length === 0) return;
     try {
-      const prices = await fetchStockPrices(stockInstrumentKeys, force);
-      setLivePrices(prev => ({ ...prev, ...prices }));
+      // Resolve crypto IDs: use stored cryptoId when available, fallback to DB symbol lookup
+      let resolvedCryptoIds: number[] = [];
+      let symbolToId = new Map<string, number>();
+      if (cryptoAssets.length > 0) {
+        const withId    = cryptoAssets.filter(a => a.track.cryptoId > 0).map(a => a.track.cryptoId);
+        const noIdSymbs = [...new Set(cryptoAssets.filter(a => !(a.track.cryptoId > 0)).map(a => a.track.symbol))];
+        if (noIdSymbs.length > 0) {
+          symbolToId = await getCryptoIdsBySymbols(db, noIdSymbs);
+        }
+        resolvedCryptoIds = [...new Set([...withId, ...[...symbolToId.values()]])];
+      }
+
+      const [stockPrices, cryptoPrices] = await Promise.all([
+        stockInstrumentKeys.length > 0 ? fetchStockPrices(stockInstrumentKeys, force) : Promise.resolve({} as Record<string, StockLTP>),
+        resolvedCryptoIds.length > 0 ? fetchCryptoPrices(resolvedCryptoIds, force) : Promise.resolve({} as Record<number, CryptoLTP>),
+      ]);
+      if (Object.keys(stockPrices).length > 0) setLivePrices(prev => ({ ...prev, ...stockPrices }));
+      if (Object.keys(cryptoPrices).length > 0) {
+        setLiveCryptoPrices(prev => ({ ...prev, ...cryptoPrices }));
+        // Build symbol-keyed map for legacy assets (cryptoId not stored)
+        if (symbolToId.size > 0) {
+          const bySymbol: Record<string, CryptoLTP> = {};
+          symbolToId.forEach((id, sym) => { if (cryptoPrices[id]) bySymbol[sym] = cryptoPrices[id]; });
+          if (Object.keys(bySymbol).length > 0) setLiveCryptoPricesBySymbol(prev => ({ ...prev, ...bySymbol }));
+        }
+      }
     } catch {
       // fall back to stored prices silently
     }
-  }, [stockInstrumentKeys]);
+  }, [stockInstrumentKeys, cryptoAssets, db]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -149,14 +185,23 @@ export function AssetsScreen() {
                 const baseVal = assetBaseValue(a, baseCurrency);
                 const diffCur = !a.track && a.currency !== baseCurrency;
 
-                const stockTrack = a.track?.kind === 'stock' ? a.track : undefined;
-                const liveData = stockTrack?.instrumentKey
-                  ? livePrices[stockTrack.instrumentKey]
+                const stockTrack  = a.track?.kind === 'stock'  ? a.track : undefined;
+                const cryptoTrack = a.track?.kind === 'crypto' ? a.track : undefined;
+
+                const stockLive  = stockTrack?.instrumentKey ? livePrices[stockTrack.instrumentKey] : undefined;
+                const cryptoLive = cryptoTrack
+                  ? (cryptoTrack.cryptoId > 0 ? liveCryptoPrices[cryptoTrack.cryptoId] : undefined) ?? liveCryptoPricesBySymbol[cryptoTrack.symbol]
                   : undefined;
-                const displayValue = liveData && stockTrack
-                  ? convert(stockTrack.qty * liveData.price, a.currency, baseCurrency)
+                const activeLive = stockLive ?? cryptoLive;
+
+                const displayValue = activeLive
+                  ? convert(
+                      (stockTrack ? stockTrack.qty : cryptoTrack ? cryptoTrack.qty : 0) * activeLive.price,
+                      a.currency,
+                      baseCurrency,
+                    )
                   : baseVal;
-                const displayChangePct = liveData ? liveData.changePct : a.track?.changePct;
+                const displayChangePct = activeLive ? activeLive.changePct : a.track?.changePct;
 
                 return (
                   <TouchableOpacity
@@ -183,11 +228,15 @@ export function AssetsScreen() {
                         {g.cat.liability ? '−' : ''}
                         {formatMoney(displayValue, baseCurrency, { compact: true })}
                       </Text>
-                      {stockTrack ? (
+                      {(stockTrack ?? cryptoTrack) ? (
                         <Text style={[styles.assetChange, {
                           color: (displayChangePct ?? 0) > 0 ? theme.pos : (displayChangePct ?? 0) < 0 ? theme.neg : theme.sub,
                         }]}>
-                          {formatMoney(liveData?.price ?? stockTrack.price, a.currency, { compact: false, decimals: 2 })}
+                          {formatMoney(
+                            activeLive?.price ?? (stockTrack ? stockTrack.price : cryptoTrack ? cryptoTrack.price : 0),
+                            a.currency,
+                            { compact: false, decimals: 2 },
+                          )}
                           {' '}({(displayChangePct ?? 0) > 0 ? '+' : ''}{(displayChangePct ?? 0).toFixed(2)}%)
                         </Text>
                       ) : a.track && displayChangePct !== undefined ? (

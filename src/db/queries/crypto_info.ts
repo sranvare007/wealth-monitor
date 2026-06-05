@@ -22,6 +22,19 @@ export async function searchCryptosDB(
   );
 }
 
+export async function getCryptoIdsBySymbols(
+  db: SQLiteDatabase,
+  symbols: string[],
+): Promise<Map<string, number>> {
+  if (symbols.length === 0) return new Map();
+  const placeholders = symbols.map(() => '?').join(',');
+  const rows = await db.getAllAsync<{ id: number; symbol: string }>(
+    `SELECT id, symbol FROM crypto_info WHERE symbol IN (${placeholders})`,
+    symbols,
+  );
+  return new Map(rows.map(r => [r.symbol, r.id]));
+}
+
 export async function getCryptoCount(db: SQLiteDatabase): Promise<number> {
   const row = await db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM crypto_info');
   return row?.cnt ?? 0;

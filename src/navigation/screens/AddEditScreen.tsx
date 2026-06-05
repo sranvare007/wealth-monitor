@@ -41,6 +41,7 @@ type FormState = {
   symbol: string;
   exchange: string;
   instrumentKey: string;
+  cryptoId: number;
   purity: '24K' | '22K';
   qty: string;
   weight: string;
@@ -70,6 +71,7 @@ const BLANK_FORM: FormState = {
   symbol: '',
   exchange: '',
   instrumentKey: '',
+  cryptoId: 0,
   purity: '24K',
   qty: '',
   weight: '',
@@ -114,7 +116,8 @@ export function AddEditScreen() {
         recurringContributionFrequency: editingAsset.recurringContributionFrequency ?? 'MONTHLY',
         symbol:       tk && tk.kind !== 'gold' ? tk.symbol       : '',
         exchange:     tk && tk.kind === 'stock'  ? tk.exchange     : '',
-        instrumentKey: tk && tk.kind === 'stock' ? tk.instrumentKey : '',
+        instrumentKey: tk && tk.kind === 'stock'  ? tk.instrumentKey : '',
+        cryptoId:      tk && tk.kind === 'crypto' ? tk.cryptoId      : 0,
         purity:    tk && tk.kind === 'gold'   ? tk.purity    : '24K',
         qty:       tk && tk.kind !== 'gold'   ? String(tk.qty)    : '',
         weight:    tk && tk.kind === 'gold'   ? String(tk.weight) : '',
@@ -136,7 +139,7 @@ export function AddEditScreen() {
 
   const chooseCat = (id: string) => {
     if (id === form.cat) return;
-    setForm(prev => ({ ...prev, cat: id, symbol: '', instrumentKey: '', qty: '', chain: '', weight: '' }));
+    setForm(prev => ({ ...prev, cat: id, symbol: '', instrumentKey: '', cryptoId: 0, qty: '', weight: '' }));
   };
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -240,7 +243,7 @@ export function AddEditScreen() {
     if (Object.keys(errs).length > 0) return;
 
     const track: AssetTrack = form.cat === 'crypto'
-      ? { kind: 'crypto', symbol: form.symbol, chain: form.chain, qty, price: form.price, changePct: form.changePct, name: form.name }
+      ? { kind: 'crypto', cryptoId: form.cryptoId, symbol: form.symbol, qty, price: form.price, changePct: form.changePct, name: form.name }
       : { kind: 'stock',  symbol: form.symbol, exchange: form.exchange, instrumentKey: form.instrumentKey, qty, price: form.price, changePct: form.changePct, name: form.name, currency: form.currency };
 
     saveAsset({
@@ -260,7 +263,7 @@ export function AddEditScreen() {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const trackedFields: TrackedFormFields = {
-    symbol: form.symbol, exchange: form.exchange, instrumentKey: form.instrumentKey, chain: form.chain,
+    symbol: form.symbol, exchange: form.exchange, instrumentKey: form.instrumentKey, cryptoId: form.cryptoId,
     purity: form.purity, qty: form.qty, weight: form.weight,
     price: form.price, changePct: form.changePct,
     name: form.name, currency: form.currency,
