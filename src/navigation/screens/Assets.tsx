@@ -1,18 +1,20 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
-  ScrollView, View, Text, TouchableOpacity, TextInput, StyleSheet,
+  ScrollView, View, Text, TouchableOpacity, TextInput, StyleSheet, RefreshControl,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAppState } from '../../store/AppContext';
 import { useTheme } from '../../hooks/useTheme';
 import { Icon } from '../../components/common/Icon';
 import { trackedSubtitle } from '../../components/common/TrackedEntry';
 import { CATEGORIES, CAT } from '../../data/categories';
 import { computeTotals, assetBaseValue } from '../../utils/networth';
-import { formatMoney } from '../../utils/currency';
+import { formatMoney, convert } from '../../utils/currency';
 import { relativeDay } from '../../utils/date';
 import { FONTS } from '../../constants/fonts';
+import { fetchStockPrices, type StockLTP } from '../../services/stockPriceService';
+import { useAppForeground } from '../../hooks/useAppForeground';
 
 export function AssetsScreen() {
   const { assets, baseCurrency, setDeleteTarget, customCategories } = useAppState();
@@ -22,6 +24,38 @@ export function AssetsScreen() {
   const insets = useSafeAreaInsets();
   const bottomPad = 86 + Math.max(insets.bottom, 8) + 16;
   const [query, setQuery] = useState('');
+  const [livePrices, setLivePrices] = useState<Record<string, StockLTP>>({});
+  const [refreshing, setRefreshing] = useState(false);
+
+  const stockInstrumentKeys = useMemo(
+    () => [
+      ...new Set(
+        assets
+          .filter(a => a.track?.kind === 'stock' && a.track.instrumentKey)
+          .map(a => (a.track as Extract<typeof a.track, { kind: 'stock' }>).instrumentKey),
+      ),
+    ],
+    [assets],
+  );
+
+  const loadLivePrices = useCallback(async (force = false) => {
+    if (stockInstrumentKeys.length === 0) return;
+    try {
+      const prices = await fetchStockPrices(stockInstrumentKeys, force);
+      setLivePrices(prev => ({ ...prev, ...prices }));
+    } catch {
+      // fall back to stored prices silently
+    }
+  }, [stockInstrumentKeys]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadLivePrices(true);
+    setRefreshing(false);
+  }, [loadLivePrices]);
+
+  useFocusEffect(useCallback(() => { loadLivePrices(); }, [loadLivePrices]));
+  useAppForeground(loadLivePrices);
 
   const allCategories = useMemo(
     () => [...CATEGORIES, ...customCategories],
@@ -56,6 +90,9 @@ export function AssetsScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: bottomPad, paddingHorizontal: 16 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
       >
         {/* Header */}
         <View style={styles.header}>
@@ -111,6 +148,16 @@ export function AssetsScreen() {
               {g.items.map((a, i) => {
                 const baseVal = assetBaseValue(a, baseCurrency);
                 const diffCur = !a.track && a.currency !== baseCurrency;
+
+                const stockTrack = a.track?.kind === 'stock' ? a.track : undefined;
+                const liveData = stockTrack?.instrumentKey
+                  ? livePrices[stockTrack.instrumentKey]
+                  : undefined;
+                const displayValue = liveData && stockTrack
+                  ? convert(stockTrack.qty * liveData.price, a.currency, baseCurrency)
+                  : baseVal;
+                const displayChangePct = liveData ? liveData.changePct : a.track?.changePct;
+
                 return (
                   <TouchableOpacity
                     key={a.id}
@@ -134,13 +181,20 @@ export function AssetsScreen() {
                     <View style={{ alignItems: 'flex-end' }}>
                       <Text style={[styles.assetValue, { color: g.cat.liability ? theme.neg : theme.text }]}>
                         {g.cat.liability ? '−' : ''}
-                        {formatMoney(baseVal, baseCurrency, { compact: true })}
+                        {formatMoney(displayValue, baseCurrency, { compact: true })}
                       </Text>
-                      {a.track ? (
+                      {stockTrack ? (
                         <Text style={[styles.assetChange, {
-                          color: a.track.changePct > 0 ? theme.pos : a.track.changePct < 0 ? theme.neg : theme.sub,
+                          color: (displayChangePct ?? 0) > 0 ? theme.pos : (displayChangePct ?? 0) < 0 ? theme.neg : theme.sub,
                         }]}>
-                          {a.track.changePct > 0 ? '+' : ''}{(a.track.changePct ?? 0).toFixed(2)}% today
+                          {formatMoney(liveData?.price ?? stockTrack.price, a.currency, { compact: false, decimals: 2 })}
+                          {' '}({(displayChangePct ?? 0) > 0 ? '+' : ''}{(displayChangePct ?? 0).toFixed(2)}%)
+                        </Text>
+                      ) : a.track && displayChangePct !== undefined ? (
+                        <Text style={[styles.assetChange, {
+                          color: displayChangePct > 0 ? theme.pos : displayChangePct < 0 ? theme.neg : theme.sub,
+                        }]}>
+                          {displayChangePct > 0 ? '+' : ''}{displayChangePct.toFixed(2)}%
                         </Text>
                       ) : diffCur ? (
                         <Text style={[styles.assetOrig, { color: theme.sub }]}>

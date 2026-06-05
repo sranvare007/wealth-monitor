@@ -114,8 +114,9 @@ export function AddEditScreen() {
           ? String(editingAsset.recurringContributionAmount)
           : '',
         recurringContributionFrequency: editingAsset.recurringContributionFrequency ?? 'MONTHLY',
-        symbol:    tk && tk.kind !== 'gold' ? tk.symbol    : '',
-        exchange:  tk && tk.kind === 'stock'  ? tk.exchange  : '',
+        symbol:       tk && tk.kind !== 'gold' ? tk.symbol       : '',
+        exchange:     tk && tk.kind === 'stock'  ? tk.exchange     : '',
+        instrumentKey: tk && tk.kind === 'stock' ? tk.instrumentKey : '',
         chain:     tk && tk.kind === 'crypto' ? tk.chain     : '',
         purity:    tk && tk.kind === 'gold'   ? tk.purity    : '24K',
         qty:       tk && tk.kind !== 'gold'   ? String(tk.qty)    : '',
@@ -243,7 +244,7 @@ export function AddEditScreen() {
 
     const track: AssetTrack = form.cat === 'crypto'
       ? { kind: 'crypto', symbol: form.symbol, chain: form.chain, qty, price: form.price, changePct: form.changePct, name: form.name }
-      : { kind: 'stock',  symbol: form.symbol, exchange: form.exchange, qty, price: form.price, changePct: form.changePct, name: form.name, currency: form.currency };
+      : { kind: 'stock',  symbol: form.symbol, exchange: form.exchange, instrumentKey: form.instrumentKey, qty, price: form.price, changePct: form.changePct, name: form.name, currency: form.currency };
 
     saveAsset({
       id: editingAsset?.id,
