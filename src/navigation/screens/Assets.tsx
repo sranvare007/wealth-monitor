@@ -155,8 +155,8 @@ export function AssetsScreen() {
           )}
         </View>
 
-        {/* Empty search result */}
-        {groups.length === 0 && (
+        {/* Empty states */}
+        {groups.length === 0 && query.length > 0 && (
           <Text style={[styles.noResult, { color: theme.sub }]}>
             No assets match "{query}"
           </Text>
