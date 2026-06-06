@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createURL } from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import * as React from 'react';
+import { useState, useRef } from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DatabaseProvider } from './db/DatabaseContext';
@@ -10,6 +11,7 @@ import { ToastProvider } from './store/ToastContext';
 import { Navigation } from './navigation';
 import { AppOverlays } from './components/common/AppOverlays';
 import { BiometricLockScreen } from './components/common/BiometricLockScreen';
+import { SplashAnimation } from './components/common/SplashAnimation';
 import { useAppFonts } from './hooks/useFonts';
 import { useTheme } from './hooks/useTheme';
 import { useAppState } from './store/AppContext';
@@ -22,7 +24,7 @@ const prefix = createURL('/');
 // Inner shell: has access to AppContext via useTheme / useAppState
 function AppShell({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { isDark } = useTheme();
-  const { loading, biometricEnabled, onboardingDone } = useAppState();
+  const { loading, biometricEnabled, onboardingDone, startAnimationEnabled } = useAppState();
   const appReady = fontsLoaded && !loading;
 
   // Only engage the lock when the user has finished onboarding and enabled the feature.
@@ -33,6 +35,26 @@ function AppShell({ fontsLoaded }: { fontsLoaded: boolean }) {
   // 'unavailable' is excluded: if hardware is gone we fail open so the user isn't
   // permanently locked out; setBiometricEnabled(false) is called from Settings on discovery.
   const showLock = lockActive && biometricState !== 'unlocked' && biometricState !== 'unavailable';
+
+  // splashDone tracks whether the startup animation has already played this session.
+  // It's local state so it resets every app launch but persists across background/foreground cycles.
+  const [splashDone, setSplashDone] = useState(false);
+
+  // Guards against the one-render race window where lockActive becomes true (DB just loaded)
+  // but biometricState still holds the stale 'unlocked' value from when lockActive was false.
+  // We only allow the splash through once showLock has actually been true at least once,
+  // confirming that biometricState has settled past its initial value.
+  const hasShownLockRef = useRef(false);
+  if (showLock) hasShownLockRef.current = true;
+
+  // lockCleared is true when there is nothing blocking the splash:
+  //   - lock was never required (!lockActive), OR
+  //   - lock hardware is unavailable (fails open), OR
+  //   - lock was shown and the user authenticated (hasShownLockRef + unlocked)
+  const lockCleared = !showLock
+    && (!lockActive || biometricState === 'unavailable' || hasShownLockRef.current);
+
+  const showSplash = appReady && lockCleared && startAnimationEnabled && !splashDone;
 
   if (!appReady) return null;
 
@@ -57,6 +79,10 @@ function AppShell({ fontsLoaded }: { fontsLoaded: boolean }) {
           biometricType={biometricType}
           onAuthenticate={authenticate}
         />
+      )}
+
+      {showSplash && (
+        <SplashAnimation onDone={() => setSplashDone(true)} />
       )}
     </View>
   );

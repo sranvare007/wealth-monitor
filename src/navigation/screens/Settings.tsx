@@ -23,6 +23,7 @@ export function SettingsScreen() {
     assets, baseCurrency, accentKey, setAccentKey,
     darkMode, setDarkMode,
     biometricEnabled, setBiometricEnabled,
+    startAnimationEnabled, setStartAnimationEnabled,
     resetDemo, clearAll,
     openCurrencyPicker,
     replayOnboarding,
@@ -198,7 +199,7 @@ export function SettingsScreen() {
           {/* Dark mode toggle */}
           <TouchableOpacity
             onPress={() => setDarkMode(!darkMode)}
-            style={[styles.row, { borderBottomWidth: 0 }]}
+            style={[styles.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.line }]}
             accessibilityRole="switch"
             accessibilityState={{ checked: darkMode }}
             accessibilityLabel="Dark mode"
@@ -209,6 +210,23 @@ export function SettingsScreen() {
               { backgroundColor: darkMode ? accent.solid : theme.line },
             ]}>
               <View style={[styles.toggleThumb, { marginLeft: darkMode ? 20 : 2 }]} />
+            </View>
+          </TouchableOpacity>
+
+          {/* Startup animation toggle */}
+          <TouchableOpacity
+            onPress={() => setStartAnimationEnabled(!startAnimationEnabled)}
+            style={[styles.row, { borderBottomWidth: 0 }]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: startAnimationEnabled }}
+            accessibilityLabel="Startup animation"
+          >
+            <Text style={[styles.rowLabel, { color: theme.text }]}>Startup animation</Text>
+            <View style={[
+              styles.toggle,
+              { backgroundColor: startAnimationEnabled ? accent.solid : theme.line },
+            ]}>
+              <View style={[styles.toggleThumb, { marginLeft: startAnimationEnabled ? 20 : 2 }]} />
             </View>
           </TouchableOpacity>
         </View>

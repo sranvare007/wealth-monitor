@@ -41,6 +41,7 @@ type AppContextValue = {
   accentKey: AccentKey;
   darkMode: boolean;
   biometricEnabled: boolean;
+  startAnimationEnabled: boolean;
   customCategories: Category[];
   saveAsset: (asset: Omit<Asset, 'id' | 'updated'> & { id?: string }) => void;
   removeAsset: (assetId: string) => void;
@@ -51,6 +52,7 @@ type AppContextValue = {
   setAccentKey: (key: AccentKey) => void;
   setDarkMode: (dark: boolean) => void;
   setBiometricEnabled: (enabled: boolean) => void;
+  setStartAnimationEnabled: (enabled: boolean) => void;
   resetDemo: () => void;
   clearAll: () => void;
   saveCustomCategory: (data: { id?: string; label: string; icon: string; color: string; liability: boolean }) => void;
@@ -84,6 +86,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [accentKey, setAccentKeyState] = useState<AccentKey>('indigo');
   const [darkMode, setDarkModeState] = useState(false);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
+  const [startAnimationEnabled, setStartAnimationEnabledState] = useState(true);
 
   const [customCategories, setCustomCategories] = useState<Category[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Asset | null>(null);
@@ -109,7 +112,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         dbAssets, dbSnapshots,
         baseCurrencySetting, hideBalanceSetting,
         onboardingDoneSetting, accentKeySetting, darkModeSetting,
-        biometricEnabledSetting,
+        biometricEnabledSetting, startAnimationSetting,
         dbCustomCats,
         exchangeRates,
       ] = await Promise.all([
@@ -121,6 +124,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getSetting(db, 'ACCENT_KEY'),
         getSetting(db, 'DARK_MODE'),
         getSetting(db, 'BIOMETRIC_ENABLED'),
+        getSetting(db, 'START_ANIMATION'),
         getAllCustomCategories(db),
         loadExchangeRates(db),
         // Gold prices are loaded here so _liveRates is populated before the
@@ -160,6 +164,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (accentKeySetting) setAccentKeyState(accentKeySetting as AccentKey);
       setDarkModeState(darkModeSetting === 'true');
       setBiometricEnabledState(biometricEnabledSetting === 'true');
+      // Default true when setting not yet written (first install)
+      setStartAnimationEnabledState(startAnimationSetting !== 'false');
       setCustomCategories(dbCustomCats);
       setLoading(false);
 
@@ -302,6 +308,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSetting(db, 'BIOMETRIC_ENABLED', String(enabled)).catch(console.error);
   }
 
+  function setStartAnimationEnabled(enabled: boolean) {
+    setStartAnimationEnabledState(enabled);
+    setSetting(db, 'START_ANIMATION', String(enabled)).catch(console.error);
+  }
+
   function resetDemo() {
     const a = seedAssets();
     const nw = computeTotals(a, 'INR').netWorth;
@@ -380,10 +391,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider value={{
       loading,
       assets, snapshots, baseCurrency, hideBalance, onboardingDone, accentKey, darkMode,
-      biometricEnabled,
+      biometricEnabled, startAnimationEnabled,
       customCategories,
       saveAsset, removeAsset, setBaseCurrency, setHideBalance,
-      completeOnboarding, replayOnboarding, setAccentKey, setDarkMode, setBiometricEnabled, resetDemo, clearAll,
+      completeOnboarding, replayOnboarding, setAccentKey, setDarkMode,
+      setBiometricEnabled, setStartAnimationEnabled,
+      resetDemo, clearAll,
       saveCustomCategory, removeCustomCategory,
       deleteTarget, currencyPickerOpen,
       categoriesSheetOpen, categoriesSheetForCreate,
