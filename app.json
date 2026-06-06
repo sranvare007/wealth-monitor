@@ -8,6 +8,13 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "scheme": "wealthmonitor",
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/5f0506ef-1949-4a03-8758-1ee22b5c9255",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.wealthmonitor",
@@ -33,7 +40,8 @@
         }
       ],
       "expo-sqlite",
-      "expo-font"
+      "expo-font",
+      "expo-updates"
     ],
     "extra": {
       "eas": {

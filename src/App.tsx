@@ -16,6 +16,7 @@ import { useAppFonts } from './hooks/useFonts';
 import { useTheme } from './hooks/useTheme';
 import { useAppState } from './store/AppContext';
 import { useBiometricAuth } from './hooks/useBiometricAuth';
+import { useOTAUpdate } from './hooks/useOTAUpdate';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -38,6 +39,8 @@ function AppShell({ fontsLoaded }: { fontsLoaded: boolean }) {
 
   // splashDone tracks whether the startup animation has already played this session.
   // It's local state so it resets every app launch but persists across background/foreground cycles.
+  useOTAUpdate();
+
   const [splashDone, setSplashDone] = useState(false);
 
   // Guards against the one-render race window where lockActive becomes true (DB just loaded)

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ScrollView, View, Text, TouchableOpacity, StyleSheet, Alert,
+  ScrollView, View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
+import * as Updates from 'expo-updates';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useAppState } from '../../store/AppContext';
@@ -45,6 +46,31 @@ export function SettingsScreen() {
       setBiometricIsEnrolled(isEnrolled);
     }).catch(() => {});
   }, []);
+
+  const { isUpdateAvailable, isUpdatePending, isChecking, isDownloading } = Updates.useUpdates();
+  const [updateChecked, setUpdateChecked] = useState(false);
+  const [updateCheckError, setUpdateCheckError] = useState(false);
+
+  const runtimeVersion = Updates.runtimeVersion ?? '1.0.0';
+  const updateChannel  = Updates.channel;
+
+  async function handleCheckForUpdates() {
+    if (!Updates.isEnabled) return;
+    setUpdateChecked(false);
+    setUpdateCheckError(false);
+    try {
+      await Updates.checkForUpdateAsync();
+      setUpdateChecked(true);
+    } catch {
+      setUpdateCheckError(true);
+    }
+  }
+
+  async function handleApplyUpdate() {
+    try {
+      await Updates.reloadAsync();
+    } catch {}
+  }
 
   async function handleBiometricToggle() {
     if (biometricEnabled) {
@@ -292,6 +318,62 @@ export function SettingsScreen() {
           <Row label="Replay onboarding" onPress={handleReplayOnboarding} />
           <Row label="Reset demo data" onPress={handleResetDemo} />
           <Row label="Clear all data" onPress={handleClearAll} danger last />
+        </View>
+
+        {/* ── APP ──────────────────────────────────────────────────────────── */}
+        <Text style={[styles.sectionLabel, { color: theme.sub }]}>APP</Text>
+        <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.line }]}>
+          <Row label="Version" detail={runtimeVersion} />
+          {updateChannel ? (
+            <Row label="Channel" detail={updateChannel} />
+          ) : null}
+
+          {isUpdatePending ? (
+            /* ── Update downloaded: show restart button ── */
+            <TouchableOpacity
+              onPress={handleApplyUpdate}
+              style={[styles.row, { borderBottomWidth: 0 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Restart to apply update"
+            >
+              <Icon name="bolt" size={18} color={accent.solid} strokeWidth={2.1} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowLabel, { color: accent.solid }]}>Restart to apply update</Text>
+                <Text style={[styles.rowSubLabel, { color: theme.sub }]}>A new version has been downloaded</Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            /* ── Check for updates row ── */
+            <TouchableOpacity
+              onPress={handleCheckForUpdates}
+              disabled={isChecking || isDownloading || !Updates.isEnabled}
+              style={[styles.row, { borderBottomWidth: 0, opacity: isChecking || isDownloading ? 0.6 : 1 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Check for updates"
+            >
+              {isChecking || isDownloading ? (
+                <ActivityIndicator size="small" color={theme.sub} />
+              ) : updateChecked && !isUpdateAvailable ? (
+                <Icon name="check" size={18} color={theme.pos} strokeWidth={2.4} />
+              ) : (
+                <Icon name="history" size={18} color={theme.sub} strokeWidth={2} />
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowLabel, { color: theme.text }]}>
+                  {isDownloading ? 'Downloading update…' : isChecking ? 'Checking…' : 'Check for updates'}
+                </Text>
+                {updateChecked && !isUpdateAvailable && !updateCheckError && (
+                  <Text style={[styles.rowSubLabel, { color: theme.sub }]}>App is up to date</Text>
+                )}
+                {updateCheckError && (
+                  <Text style={[styles.rowSubLabel, { color: theme.neg }]}>Could not check. Try again.</Text>
+                )}
+              </View>
+              {!isChecking && !isDownloading && (
+                <Icon name="chevR" size={16} color={theme.faint} strokeWidth={2.2} />
+              )}
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Privacy note */}

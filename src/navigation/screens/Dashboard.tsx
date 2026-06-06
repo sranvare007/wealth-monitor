@@ -98,7 +98,7 @@ export function DashboardScreen() {
               {isNeg && <Icon name="arrowDn" size={15} color="#fff" strokeWidth={2.6} />}
               {!isPos && !isNeg && <View style={styles.dash} />}
               <Text style={styles.changePct}>
-                {isPos ? '+' : ''}{changePct.toFixed(2)}%
+                {isPos ? '+' : ''}{(Object.is(Math.round(changePct * 100), -0) ? 0 : changePct).toFixed(2)}%
               </Text>
               <Text style={styles.changeAbs}>
                 {formatMoney(Math.abs(changeAbs), baseCurrency, { compact: true })}

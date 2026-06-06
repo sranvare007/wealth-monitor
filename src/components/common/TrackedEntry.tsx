@@ -297,7 +297,7 @@ function SearchPickerModal({
     >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
       >
         {/* Backdrop */}
         <TouchableOpacity

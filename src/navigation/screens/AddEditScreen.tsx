@@ -274,8 +274,11 @@ export function AddEditScreen() {
     : null;
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.cardBg }]} edges={['top', 'left', 'right']}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView
+      style={[styles.root, { backgroundColor: theme.cardBg }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
 
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <View style={[styles.header, { borderBottomColor: theme.line }]}>
@@ -508,8 +511,8 @@ export function AddEditScreen() {
             </TouchableOpacity>
           )}
         </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
