@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, Switch,
   StyleSheet, KeyboardAvoidingView, Platform,
@@ -13,6 +13,7 @@ import { TrackedEntry, type TrackedFormFields, type TrackedErrors } from '../../
 import { CATEGORIES, CAT } from '../../data/categories';
 import { CURRENCIES, CUR, convert, formatMoney } from '../../utils/currency';
 import { advanceByFrequency, fmtDate } from '../../utils/date';
+import { fdTotalDurationDays } from '../../utils/fd';
 import { getGoldRates, isTrackedCat } from '../../services/marketData';
 import type { AssetCategory, AssetTrack, RecurringContributionFrequency } from '../../types';
 import { FONTS } from '../../constants/fonts';
@@ -47,6 +48,14 @@ type FormState = {
   weight: string;
   price: number;
   changePct: number;
+  // Fixed Deposit fields
+  fdInterestRate: string;
+  fdDurationYears: string;
+  fdDurationMonths: string;
+  fdDurationDays: string;
+  fdStartDay: string;
+  fdStartMonth: string;
+  fdStartYear: string;
 };
 
 type FormErrors = {
@@ -57,27 +66,46 @@ type FormErrors = {
   qty?: boolean;
   weight?: boolean;
   price?: boolean;
+  fdInterestRate?: boolean;
+  fdDuration?: boolean;
+  fdStartDate?: boolean;
 };
 
-const BLANK_FORM: FormState = {
-  cat: 'bank',
-  name: '',
-  value: '',
-  currency: 'INR',
-  note: '',
-  recurringContributionEnabled: false,
-  recurringContributionAmount: '',
-  recurringContributionFrequency: 'MONTHLY',
-  symbol: '',
-  exchange: '',
-  instrumentKey: '',
-  cryptoId: 0,
-  purity: '24K',
-  qty: '',
-  weight: '',
-  price: 0,
-  changePct: 0,
-};
+function todayParts(): { fdStartDay: string; fdStartMonth: string; fdStartYear: string } {
+  const d = new Date();
+  return {
+    fdStartDay:   String(d.getDate()).padStart(2, '0'),
+    fdStartMonth: String(d.getMonth() + 1).padStart(2, '0'),
+    fdStartYear:  String(d.getFullYear()),
+  };
+}
+
+function blankForm(currency: string): FormState {
+  return {
+    cat: 'bank',
+    name: '',
+    value: '',
+    currency,
+    note: '',
+    recurringContributionEnabled: false,
+    recurringContributionAmount: '',
+    recurringContributionFrequency: 'MONTHLY',
+    symbol: '',
+    exchange: '',
+    instrumentKey: '',
+    cryptoId: 0,
+    purity: '24K',
+    qty: '',
+    weight: '',
+    price: 0,
+    changePct: 0,
+    fdInterestRate: '',
+    fdDurationYears: '',
+    fdDurationMonths: '',
+    fdDurationDays: '',
+    ...todayParts(),
+  };
+}
 
 export function AddEditScreen() {
   const route = useRoute<RouteType>();
@@ -95,7 +123,7 @@ export function AddEditScreen() {
     [assetId, assets],
   );
 
-  const [form, setForm] = useState<FormState>({ ...BLANK_FORM, currency: baseCurrency });
+  const [form, setForm] = useState<FormState>(() => blankForm(baseCurrency));
   const [errors, setErrors] = useState<FormErrors>({});
 
   // Populate form when editing
@@ -103,6 +131,7 @@ export function AddEditScreen() {
     setErrors({});
     if (editingAsset) {
       const tk = editingAsset.track;
+      const startDate = editingAsset.fdStartDate ? new Date(editingAsset.fdStartDate) : new Date();
       setForm({
         cat: editingAsset.cat,
         name: editingAsset.name,
@@ -123,9 +152,16 @@ export function AddEditScreen() {
         weight:    tk && tk.kind === 'gold'   ? String(tk.weight) : '',
         price:     tk && tk.kind !== 'gold'   ? tk.price    : (tk?.kind === 'gold' ? tk.perGram : 0),
         changePct: tk ? tk.changePct : 0,
+        fdInterestRate:  editingAsset.fdInterestRate  != null ? String(editingAsset.fdInterestRate)  : '',
+        fdDurationYears: editingAsset.fdDurationYears != null ? String(editingAsset.fdDurationYears) : '',
+        fdDurationMonths:editingAsset.fdDurationMonths!= null ? String(editingAsset.fdDurationMonths): '',
+        fdDurationDays:  editingAsset.fdDurationDays  != null ? String(editingAsset.fdDurationDays)  : '',
+        fdStartDay:   String(startDate.getDate()).padStart(2, '0'),
+        fdStartMonth: String(startDate.getMonth() + 1).padStart(2, '0'),
+        fdStartYear:  String(startDate.getFullYear()),
       });
     } else {
-      setForm({ ...BLANK_FORM, currency: baseCurrency });
+      setForm(blankForm(baseCurrency));
     }
   }, [editingAsset]);
 
@@ -139,7 +175,10 @@ export function AddEditScreen() {
 
   const chooseCat = (id: string) => {
     if (id === form.cat) return;
-    setForm(prev => ({ ...prev, cat: id, symbol: '', instrumentKey: '', cryptoId: 0, qty: '', weight: '' }));
+    setForm(prev => ({
+      ...prev, cat: id, symbol: '', instrumentKey: '', cryptoId: 0, qty: '', weight: '',
+      ...(id !== 'fd' ? { fdInterestRate: '', fdDurationYears: '', fdDurationMonths: '', fdDurationDays: '' } : {}),
+    }));
   };
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -183,6 +222,32 @@ export function AddEditScreen() {
     const assetValue = parseFloat(form.value.replace(/,/g, ''));
     if (!assetValue || assetValue <= 0) errs.value = true;
     if (form.recurringContributionEnabled && !(rcAmountVal > 0)) errs.recurringContributionAmount = true;
+
+    let fdInterestRate: number | null = null;
+    let fdDurationYears: number | null = null;
+    let fdDurationMonths: number | null = null;
+    let fdDurationDays: number | null = null;
+    let fdStartDate: number | null = null;
+
+    if (form.cat === 'fd') {
+      const rate = parseFloat(form.fdInterestRate);
+      if (!rate || rate <= 0) errs.fdInterestRate = true;
+      else fdInterestRate = rate;
+
+      const yrs = parseInt(form.fdDurationYears || '0', 10);
+      const mos = parseInt(form.fdDurationMonths || '0', 10);
+      const dys = parseInt(form.fdDurationDays || '0', 10);
+      if (fdTotalDurationDays(yrs, mos, dys) <= 0) errs.fdDuration = true;
+      else { fdDurationYears = yrs || null; fdDurationMonths = mos || null; fdDurationDays = dys || null; }
+
+      const d = parseInt(form.fdStartDay, 10);
+      const m = parseInt(form.fdStartMonth, 10);
+      const y = parseInt(form.fdStartYear, 10);
+      const parsed = new Date(y, m - 1, d).getTime();
+      if (!d || !m || !y || isNaN(parsed)) errs.fdStartDate = true;
+      else fdStartDate = parsed;
+    }
+
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
@@ -208,6 +273,11 @@ export function AddEditScreen() {
       recurringContributionFrequency: form.recurringContributionEnabled ? form.recurringContributionFrequency : null,
       recurringContributionNextDue: rcNextDue,
       recurringContributionLastApplied: editingAsset?.recurringContributionLastApplied ?? null,
+      fdInterestRate,
+      fdDurationYears,
+      fdDurationMonths,
+      fdDurationDays,
+      fdStartDate,
     });
     navigation.goBack();
   }
@@ -351,7 +421,7 @@ export function AddEditScreen() {
                 <TextInput
                   value={form.name}
                   onChangeText={v => setField('name', v)}
-                  placeholder={isLiability ? 'e.g. Home Loan' : 'e.g. HDFC Savings'}
+                  placeholder={isLiability ? 'e.g. Home Loan' : form.cat === 'fd' ? 'e.g. SBI Fixed Deposit' : 'e.g. HDFC Savings'}
                   placeholderTextColor={theme.faint}
                   style={[styles.input, { color: theme.text }]}
                   maxLength={60}
@@ -359,7 +429,7 @@ export function AddEditScreen() {
               </View>
 
               <Text style={[styles.fieldLabel, { color: theme.sub }]}>
-                {isLiability ? 'OUTSTANDING AMOUNT' : 'CURRENT VALUE'}
+                {isLiability ? 'OUTSTANDING AMOUNT' : form.cat === 'fd' ? 'PRINCIPAL AMOUNT' : 'CURRENT VALUE'}
               </Text>
               <View style={[styles.valueBox, { backgroundColor: theme.chipBg, borderColor: errors.value ? theme.neg : 'transparent' }]}>
                 <Text style={[styles.currencySymbol, { color: theme.sub }]}>{CUR[form.currency]?.symbol}</Text>
@@ -397,6 +467,112 @@ export function AddEditScreen() {
                 <Text style={[styles.convertedHint, { color: theme.sub }]}>
                   ≈ {formatMoney(convertedValue, 'INR')} in INR
                 </Text>
+              )}
+
+              {/* ── Fixed Deposit fields ────────────────────────────────── */}
+              {form.cat === 'fd' && (
+                <>
+                  <Text style={[styles.fieldLabel, { color: theme.sub, marginTop: 4 }]}>INTEREST RATE (% P.A.)</Text>
+                  <View style={[styles.valueBox, { backgroundColor: theme.chipBg, borderColor: errors.fdInterestRate ? theme.neg : 'transparent' }]}>
+                    <TextInput
+                      value={form.fdInterestRate}
+                      onChangeText={v => setField('fdInterestRate', v.replace(/[^0-9.]/g, ''))}
+                      keyboardType="decimal-pad"
+                      placeholder="e.g. 7.5"
+                      placeholderTextColor={theme.faint}
+                      style={[styles.valueInput, { color: theme.text }]}
+                    />
+                    <Text style={[styles.currencySymbol, { color: theme.sub, marginRight: 12 }]}>%</Text>
+                  </View>
+
+                  <Text style={[styles.fieldLabel, { color: theme.sub }]}>DURATION</Text>
+                  <View style={styles.fdDurationRow}>
+                    <View style={[styles.fdDurationBox, { backgroundColor: theme.chipBg, borderColor: errors.fdDuration ? theme.neg : 'transparent' }]}>
+                      <TextInput
+                        value={form.fdDurationYears}
+                        onChangeText={v => setField('fdDurationYears', v.replace(/[^0-9]/g, ''))}
+                        keyboardType="number-pad"
+                        placeholder="0"
+                        placeholderTextColor={theme.faint}
+                        style={[styles.fdDurationInput, { color: theme.text }]}
+                        maxLength={2}
+                      />
+                      <Text style={[styles.fdDurationUnit, { color: theme.sub }]}>Yr</Text>
+                    </View>
+                    <View style={[styles.fdDurationBox, { backgroundColor: theme.chipBg, borderColor: errors.fdDuration ? theme.neg : 'transparent' }]}>
+                      <TextInput
+                        value={form.fdDurationMonths}
+                        onChangeText={v => setField('fdDurationMonths', v.replace(/[^0-9]/g, ''))}
+                        keyboardType="number-pad"
+                        placeholder="0"
+                        placeholderTextColor={theme.faint}
+                        style={[styles.fdDurationInput, { color: theme.text }]}
+                        maxLength={2}
+                      />
+                      <Text style={[styles.fdDurationUnit, { color: theme.sub }]}>Mo</Text>
+                    </View>
+                    <View style={[styles.fdDurationBox, { backgroundColor: theme.chipBg, borderColor: errors.fdDuration ? theme.neg : 'transparent' }]}>
+                      <TextInput
+                        value={form.fdDurationDays}
+                        onChangeText={v => setField('fdDurationDays', v.replace(/[^0-9]/g, ''))}
+                        keyboardType="number-pad"
+                        placeholder="0"
+                        placeholderTextColor={theme.faint}
+                        style={[styles.fdDurationInput, { color: theme.text }]}
+                        maxLength={3}
+                      />
+                      <Text style={[styles.fdDurationUnit, { color: theme.sub }]}>Day</Text>
+                    </View>
+                  </View>
+                  {errors.fdDuration && (
+                    <Text style={[styles.fdErrorHint, { color: theme.neg }]}>Enter at least one duration value</Text>
+                  )}
+
+                  <Text style={[styles.fieldLabel, { color: theme.sub }]}>INVESTMENT DATE</Text>
+                  <View style={styles.fdDateRow}>
+                    <View style={[styles.fdDateBox, { backgroundColor: theme.chipBg, borderColor: errors.fdStartDate ? theme.neg : 'transparent' }]}>
+                      <TextInput
+                        value={form.fdStartDay}
+                        onChangeText={v => setField('fdStartDay', v.replace(/[^0-9]/g, ''))}
+                        keyboardType="number-pad"
+                        placeholder="DD"
+                        placeholderTextColor={theme.faint}
+                        style={[styles.fdDateInput, { color: theme.text }]}
+                        maxLength={2}
+                      />
+                      <Text style={[styles.fdDurationUnit, { color: theme.sub }]}>DD</Text>
+                    </View>
+                    <Text style={[styles.fdDateSep, { color: theme.faint }]}>/</Text>
+                    <View style={[styles.fdDateBox, { backgroundColor: theme.chipBg, borderColor: errors.fdStartDate ? theme.neg : 'transparent' }]}>
+                      <TextInput
+                        value={form.fdStartMonth}
+                        onChangeText={v => setField('fdStartMonth', v.replace(/[^0-9]/g, ''))}
+                        keyboardType="number-pad"
+                        placeholder="MM"
+                        placeholderTextColor={theme.faint}
+                        style={[styles.fdDateInput, { color: theme.text }]}
+                        maxLength={2}
+                      />
+                      <Text style={[styles.fdDurationUnit, { color: theme.sub }]}>MM</Text>
+                    </View>
+                    <Text style={[styles.fdDateSep, { color: theme.faint }]}>/</Text>
+                    <View style={[styles.fdDateBox, { flex: 1.4, backgroundColor: theme.chipBg, borderColor: errors.fdStartDate ? theme.neg : 'transparent' }]}>
+                      <TextInput
+                        value={form.fdStartYear}
+                        onChangeText={v => setField('fdStartYear', v.replace(/[^0-9]/g, ''))}
+                        keyboardType="number-pad"
+                        placeholder="YYYY"
+                        placeholderTextColor={theme.faint}
+                        style={[styles.fdDateInput, { color: theme.text }]}
+                        maxLength={4}
+                      />
+                      <Text style={[styles.fdDurationUnit, { color: theme.sub }]}>YYYY</Text>
+                    </View>
+                  </View>
+                  {errors.fdStartDate && (
+                    <Text style={[styles.fdErrorHint, { color: theme.neg }]}>Enter a valid investment date</Text>
+                  )}
+                </>
               )}
             </>
           )}
@@ -548,4 +724,15 @@ const styles = StyleSheet.create({
   rcNextDueRow:  { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9, marginBottom: 14 },
   rcNextDueText: { fontSize: 13, fontFamily: FONTS.jakartaSemiBold },
   rcLastApplied: { fontSize: 12, fontFamily: FONTS.jakarta, marginBottom: 14, marginLeft: 2 },
+
+  fdDurationRow:  { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  fdDurationBox:  { flex: 1, flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1.5, paddingHorizontal: 12, paddingVertical: 10 },
+  fdDurationInput:{ flex: 1, fontSize: 18, fontFamily: FONTS.groteskBold, padding: 0 },
+  fdDurationUnit: { fontSize: 11, fontFamily: FONTS.jakartaBold, marginLeft: 4 },
+
+  fdDateRow:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  fdDateBox:  { flex: 1, flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1.5, paddingHorizontal: 10, paddingVertical: 10 },
+  fdDateInput:{ flex: 1, fontSize: 17, fontFamily: FONTS.groteskBold, padding: 0 },
+  fdDateSep:  { fontSize: 20, fontFamily: FONTS.groteskBold },
+  fdErrorHint:{ fontSize: 12, fontFamily: FONTS.jakarta, marginTop: -4, marginBottom: 14, marginLeft: 2 },
 });

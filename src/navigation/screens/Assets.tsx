@@ -11,7 +11,8 @@ import { trackedSubtitle } from '../../components/common/TrackedEntry';
 import { CATEGORIES, CAT } from '../../data/categories';
 import { computeTotals, assetBaseValue } from '../../utils/networth';
 import { formatMoney, convert } from '../../utils/currency';
-import { relativeDay } from '../../utils/date';
+import { relativeDay, fmtDate } from '../../utils/date';
+import { calcFdCurrentValue, fdMaturityDateMs, isFdMatured } from '../../utils/fd';
 import { FONTS } from '../../constants/fonts';
 import { fetchStockPrices, type StockLTP } from '../../services/stockPriceService';
 import { fetchCryptoPrices, type CryptoLTP } from '../../services/cryptoPriceService';
@@ -205,6 +206,14 @@ export function AssetsScreen() {
                   : baseVal;
                 const displayChangePct = activeLive ? activeLive.changePct : a.track?.changePct;
 
+                // FD breakdown values
+                const isFd = a.cat === 'fd' && a.fdInterestRate != null && a.fdStartDate != null;
+                const fdPrincipal = isFd ? a.value : 0;
+                const fdTotal = isFd ? calcFdCurrentValue(a) : 0;
+                const fdInterestAmt = isFd ? fdTotal - fdPrincipal : 0;
+                const fdMatured = isFd && isFdMatured(a);
+                const fdMaturityMs = isFd ? fdMaturityDateMs(a) : null;
+
                 return (
                   <TouchableOpacity
                     key={a.id}
@@ -219,39 +228,70 @@ export function AssetsScreen() {
                       <Text style={[styles.assetName, { color: theme.text }]} numberOfLines={1}>
                         {a.name}
                       </Text>
-                      <Text style={[styles.assetMeta, { color: theme.sub }]} numberOfLines={1}>
-                        {a.track
-                          ? trackedSubtitle(a.track)
-                          : `Updated ${relativeDay(a.updated)}${a.note ? ` · ${a.note}` : ''}`}
-                      </Text>
+                      {isFd ? (
+                        <>
+                          <Text style={[styles.assetMeta, { color: theme.sub }]} numberOfLines={1}>
+                            {a.fdInterestRate}% p.a.
+                            {fdMaturityMs ? (fdMatured ? ' · Matured' : ` · Matures ${fmtDate(fdMaturityMs, { full: true })}`) : ''}
+                          </Text>
+                          <View style={styles.fdBreakdownRow}>
+                            <Text style={[styles.fdBreakdownItem, { color: theme.sub }]}>
+                              {'P: '}{formatMoney(convert(fdPrincipal, a.currency, baseCurrency), baseCurrency, { compact: true })}
+                            </Text>
+                            <Text style={[styles.fdBreakdownSep, { color: theme.faint }]}>·</Text>
+                            <Text style={[styles.fdBreakdownItem, { color: theme.pos }]}>
+                              {'+' + formatMoney(convert(fdInterestAmt, a.currency, baseCurrency), baseCurrency, { compact: false })}
+                            </Text>
+                          </View>
+                        </>
+                      ) : (
+                        <Text style={[styles.assetMeta, { color: theme.sub }]} numberOfLines={1}>
+                          {a.track
+                            ? trackedSubtitle(a.track)
+                            : `Updated ${relativeDay(a.updated)}${a.note ? ` · ${a.note}` : ''}`}
+                        </Text>
+                      )}
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={[styles.assetValue, { color: g.cat.liability ? theme.neg : theme.text }]}>
-                        {g.cat.liability ? '−' : ''}
-                        {formatMoney(displayValue, baseCurrency, { compact: true })}
-                      </Text>
-                      {(stockTrack ?? cryptoTrack) ? (
-                        <Text style={[styles.assetChange, {
-                          color: (displayChangePct ?? 0) > 0 ? theme.pos : (displayChangePct ?? 0) < 0 ? theme.neg : theme.sub,
-                        }]}>
-                          {formatMoney(
-                            activeLive?.price ?? (stockTrack ? stockTrack.price : cryptoTrack ? cryptoTrack.price : 0),
-                            a.currency,
-                            { compact: false, decimals: 2 },
-                          )}
-                          {' '}({(displayChangePct ?? 0) > 0 ? '+' : ''}{(displayChangePct ?? 0).toFixed(2)}%)
-                        </Text>
-                      ) : a.track && displayChangePct !== undefined ? (
-                        <Text style={[styles.assetChange, {
-                          color: displayChangePct > 0 ? theme.pos : displayChangePct < 0 ? theme.neg : theme.sub,
-                        }]}>
-                          {displayChangePct > 0 ? '+' : ''}{displayChangePct.toFixed(2)}%
-                        </Text>
-                      ) : diffCur ? (
-                        <Text style={[styles.assetOrig, { color: theme.sub }]}>
-                          {formatMoney(a.value, a.currency, { compact: true })}
-                        </Text>
-                      ) : null}
+                      {isFd ? (
+                        <>
+                          <Text style={[styles.assetValue, { color: theme.text }]}>
+                            {formatMoney(convert(fdTotal, a.currency, baseCurrency), baseCurrency, { compact: true })}
+                          </Text>
+                          <Text style={[styles.assetChange, { color: fdMatured ? theme.sub : theme.pos }]}>
+                            {fdMatured ? 'Matured' : `+${((fdInterestAmt / fdPrincipal) * 100).toFixed(2)}%`}
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <Text style={[styles.assetValue, { color: g.cat.liability ? theme.neg : theme.text }]}>
+                            {g.cat.liability ? '−' : ''}
+                            {formatMoney(displayValue, baseCurrency, { compact: true })}
+                          </Text>
+                          {(stockTrack ?? cryptoTrack) ? (
+                            <Text style={[styles.assetChange, {
+                              color: (displayChangePct ?? 0) > 0 ? theme.pos : (displayChangePct ?? 0) < 0 ? theme.neg : theme.sub,
+                            }]}>
+                              {formatMoney(
+                                activeLive?.price ?? (stockTrack ? stockTrack.price : cryptoTrack ? cryptoTrack.price : 0),
+                                a.currency,
+                                { compact: false, decimals: 2 },
+                              )}
+                              {' '}({(displayChangePct ?? 0) > 0 ? '+' : ''}{(displayChangePct ?? 0).toFixed(2)}%)
+                            </Text>
+                          ) : a.track && displayChangePct !== undefined ? (
+                            <Text style={[styles.assetChange, {
+                              color: displayChangePct > 0 ? theme.pos : displayChangePct < 0 ? theme.neg : theme.sub,
+                            }]}>
+                              {displayChangePct > 0 ? '+' : ''}{displayChangePct.toFixed(2)}%
+                            </Text>
+                          ) : diffCur ? (
+                            <Text style={[styles.assetOrig, { color: theme.sub }]}>
+                              {formatMoney(a.value, a.currency, { compact: true })}
+                            </Text>
+                          ) : null}
+                        </>
+                      )}
                     </View>
                     <Icon name="chevR" size={16} color={theme.faint} strokeWidth={2.2} />
                   </TouchableOpacity>
@@ -300,4 +340,8 @@ const styles = StyleSheet.create({
 
   addBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderStyle: 'dashed', borderRadius: 16, padding: 15 },
   addBtnText: { fontSize: 15, fontFamily: FONTS.jakartaBold },
+
+  fdBreakdownRow:  { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  fdBreakdownItem: { fontSize: 11.5, fontFamily: FONTS.jakartaBold },
+  fdBreakdownSep:  { fontSize: 11, fontFamily: FONTS.jakarta },
 });

@@ -1,9 +1,13 @@
 import type { Asset, Category, Totals, DistributionSegment } from '../types';
 import { CATEGORIES, CAT } from '../data/categories';
 import { convert } from './currency';
+import { calcFdCurrentValue } from './fd';
 
 export function assetBaseValue(asset: Asset, base: string): number {
-  return convert(asset.value, asset.currency, base);
+  const v = asset.cat === 'fd' && asset.fdInterestRate != null && asset.fdStartDate != null
+    ? calcFdCurrentValue(asset)
+    : asset.value;
+  return convert(v, asset.currency, base);
 }
 
 export function computeTotals(

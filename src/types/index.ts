@@ -17,7 +17,9 @@ export type Asset = {
   id: string;
   name: string;
   cat: AssetCategory;
-  value: number;    // always a positive number; liability sign applied at compute time
+  // For FD assets: value stores the principal (invested amount).
+  // Current value (principal + accrued interest) is computed on-the-fly via assetBaseValue().
+  value: number;
   currency: string; // ISO 4217
   note: string;
   updated: number;  // Unix ms timestamp
@@ -28,6 +30,12 @@ export type Asset = {
   recurringContributionFrequency?: RecurringContributionFrequency | null;
   recurringContributionNextDue?: number | null;      // Unix ms timestamp
   recurringContributionLastApplied?: number | null;  // Unix ms timestamp
+  // Fixed Deposit fields — only set when cat === 'fd'
+  fdInterestRate?: number | null;      // annual simple interest rate (%)
+  fdDurationYears?: number | null;
+  fdDurationMonths?: number | null;
+  fdDurationDays?: number | null;
+  fdStartDate?: number | null;         // Unix ms timestamp (investment date)
 };
 
 export type Snapshot = {
