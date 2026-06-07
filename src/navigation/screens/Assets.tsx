@@ -12,7 +12,7 @@ import { CATEGORIES, CAT } from '../../data/categories';
 import { computeTotals, assetBaseValue } from '../../utils/networth';
 import { formatMoney, convert } from '../../utils/currency';
 import { relativeDay, fmtDate } from '../../utils/date';
-import { calcFdCurrentValue, fdMaturityDateMs, isFdMatured } from '../../utils/fd';
+import { calcFdCurrentValue, fdMaturityDateMs, isFdMatured, calcRdCurrentValue, calcRdTotalInvested, calcRdInterest } from '../../utils/fd';
 import { FONTS } from '../../constants/fonts';
 import { fetchStockPrices, type StockLTP } from '../../services/stockPriceService';
 import { fetchCryptoPrices, type CryptoLTP } from '../../services/cryptoPriceService';
@@ -206,13 +206,18 @@ export function AssetsScreen() {
                   : baseVal;
                 const displayChangePct = activeLive ? activeLive.changePct : a.track?.changePct;
 
-                // FD breakdown values
+                // FD / RD display values
                 const isFd = a.cat === 'fd' && a.fdInterestRate != null && a.fdStartDate != null;
                 const fdPrincipal = isFd ? a.value : 0;
                 const fdTotal = isFd ? calcFdCurrentValue(a) : 0;
                 const fdInterestAmt = isFd ? fdTotal - fdPrincipal : 0;
                 const fdMatured = isFd && isFdMatured(a);
                 const fdMaturityMs = isFd ? fdMaturityDateMs(a) : null;
+
+                const isRd = a.cat === 'rd' && a.fdInterestRate != null && a.fdStartDate != null;
+                const rdInvested = isRd ? calcRdTotalInvested(a) : 0;
+                const rdInterest = isRd ? calcRdInterest(a) : 0;
+                const rdTotal = isRd ? rdInvested + rdInterest : 0;
 
                 return (
                   <TouchableOpacity
@@ -244,6 +249,21 @@ export function AssetsScreen() {
                             </Text>
                           </View>
                         </>
+                      ) : isRd ? (
+                        <>
+                          <Text style={[styles.assetMeta, { color: theme.sub }]} numberOfLines={1}>
+                            {a.fdInterestRate}% p.a. · Started {fmtDate(a.fdStartDate!, { full: true })}
+                          </Text>
+                          <View style={styles.fdBreakdownRow}>
+                            <Text style={[styles.fdBreakdownItem, { color: theme.sub }]}>
+                              {'Invested: '}{formatMoney(convert(rdInvested, a.currency, baseCurrency), baseCurrency, { compact: true })}
+                            </Text>
+                            <Text style={[styles.fdBreakdownSep, { color: theme.faint }]}>·</Text>
+                            <Text style={[styles.fdBreakdownItem, { color: theme.pos }]}>
+                              {'+' + formatMoney(convert(rdInterest, a.currency, baseCurrency), baseCurrency, { compact: false })}
+                            </Text>
+                          </View>
+                        </>
                       ) : (
                         <Text style={[styles.assetMeta, { color: theme.sub }]} numberOfLines={1}>
                           {a.track
@@ -260,6 +280,15 @@ export function AssetsScreen() {
                           </Text>
                           <Text style={[styles.assetChange, { color: fdMatured ? theme.sub : theme.pos }]}>
                             {fdMatured ? 'Matured' : `+${((fdInterestAmt / fdPrincipal) * 100).toFixed(2)}%`}
+                          </Text>
+                        </>
+                      ) : isRd ? (
+                        <>
+                          <Text style={[styles.assetValue, { color: theme.text }]}>
+                            {formatMoney(convert(rdTotal, a.currency, baseCurrency), baseCurrency, { compact: true })}
+                          </Text>
+                          <Text style={[styles.assetChange, { color: theme.pos }]}>
+                            {rdInvested > 0 ? `+${((rdInterest / rdInvested) * 100).toFixed(2)}%` : '+0.00%'}
                           </Text>
                         </>
                       ) : (

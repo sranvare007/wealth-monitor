@@ -138,7 +138,7 @@ export function AddEditScreen() {
         value: String(editingAsset.value),
         currency: editingAsset.currency,
         note: editingAsset.note ?? '',
-        recurringContributionEnabled: editingAsset.recurringContributionEnabled === 1,
+        recurringContributionEnabled: editingAsset.cat === 'rd' || editingAsset.recurringContributionEnabled === 1,
         recurringContributionAmount: editingAsset.recurringContributionAmount
           ? String(editingAsset.recurringContributionAmount)
           : '',
@@ -178,6 +178,8 @@ export function AddEditScreen() {
     setForm(prev => ({
       ...prev, cat: id, symbol: '', instrumentKey: '', cryptoId: 0, qty: '', weight: '',
       ...(id !== 'fd' ? { fdInterestRate: '', fdDurationYears: '', fdDurationMonths: '', fdDurationDays: '' } : {}),
+      // Always reset RC toggle; RD is the only category where it starts on
+      recurringContributionEnabled: id === 'rd',
     }));
   };
 
@@ -246,13 +248,22 @@ export function AddEditScreen() {
       const parsed = new Date(y, m - 1, d).getTime();
       if (!d || !m || !y || isNaN(parsed)) errs.fdStartDate = true;
       else fdStartDate = parsed;
+    } else if (form.cat === 'rd') {
+      const rate = parseFloat(form.fdInterestRate);
+      if (rate > 0) fdInterestRate = rate;
+      const d = parseInt(form.fdStartDay, 10);
+      const m = parseInt(form.fdStartMonth, 10);
+      const y = parseInt(form.fdStartYear, 10);
+      const parsed = new Date(y, m - 1, d).getTime();
+      if (d && m && y && !isNaN(parsed)) fdStartDate = parsed;
     }
 
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
+    const rcOn = form.cat === 'rd' ? true : form.recurringContributionEnabled;
     let rcNextDue: number | null = null;
-    if (form.recurringContributionEnabled && rcAmountVal > 0) {
+    if (rcOn && rcAmountVal > 0) {
       const existing = editingAsset?.recurringContributionNextDue;
       const freqChanged = editingAsset?.recurringContributionFrequency !== form.recurringContributionFrequency;
       rcNextDue = (existing && existing > Date.now() && !freqChanged)
@@ -268,9 +279,9 @@ export function AddEditScreen() {
       currency: form.currency,
       note: form.note.trim(),
       track: null,
-      recurringContributionEnabled: form.recurringContributionEnabled ? 1 : 0,
-      recurringContributionAmount: form.recurringContributionEnabled ? rcAmountVal : null,
-      recurringContributionFrequency: form.recurringContributionEnabled ? form.recurringContributionFrequency : null,
+      recurringContributionEnabled: rcOn ? 1 : 0,
+      recurringContributionAmount: rcOn ? rcAmountVal : null,
+      recurringContributionFrequency: rcOn ? form.recurringContributionFrequency : null,
       recurringContributionNextDue: rcNextDue,
       recurringContributionLastApplied: editingAsset?.recurringContributionLastApplied ?? null,
       fdInterestRate,
@@ -283,6 +294,27 @@ export function AddEditScreen() {
   }
 
   function submitTracked() {
+    if (form.recurringContributionEnabled && !(rcAmountVal > 0)) {
+      setErrors({ recurringContributionAmount: true });
+      return;
+    }
+
+    let rcNextDue: number | null = null;
+    if (form.recurringContributionEnabled && rcAmountVal > 0) {
+      const existing = editingAsset?.recurringContributionNextDue;
+      const freqChanged = editingAsset?.recurringContributionFrequency !== form.recurringContributionFrequency;
+      rcNextDue = (existing && existing > Date.now() && !freqChanged)
+        ? existing
+        : advanceByFrequency(Date.now(), form.recurringContributionFrequency);
+    }
+    const rcFields = {
+      recurringContributionEnabled: form.recurringContributionEnabled ? 1 : 0,
+      recurringContributionAmount: form.recurringContributionEnabled ? rcAmountVal : null,
+      recurringContributionFrequency: form.recurringContributionEnabled ? form.recurringContributionFrequency : null,
+      recurringContributionNextDue: rcNextDue,
+      recurringContributionLastApplied: editingAsset?.recurringContributionLastApplied ?? null,
+    } as const;
+
     if (form.cat === 'gold') {
       const w = parseFloat(form.weight);
       if (!w || w <= 0) { setErrors({ weight: true }); return; }
@@ -296,9 +328,7 @@ export function AddEditScreen() {
         currency: rates.currency,
         note: form.note.trim(),
         track: { kind: 'gold', purity: form.purity, weight: w, perGram, changePct: rates.changePct },
-        recurringContributionEnabled: 0, recurringContributionAmount: null,
-        recurringContributionFrequency: null, recurringContributionNextDue: null,
-        recurringContributionLastApplied: null,
+        ...rcFields,
       });
       navigation.goBack();
       return;
@@ -324,9 +354,7 @@ export function AddEditScreen() {
       currency: form.currency,
       note: form.note.trim(),
       track,
-      recurringContributionEnabled: 0, recurringContributionAmount: null,
-      recurringContributionFrequency: null, recurringContributionNextDue: null,
-      recurringContributionLastApplied: null,
+      ...rcFields,
     });
     navigation.goBack();
   }
@@ -429,7 +457,7 @@ export function AddEditScreen() {
               </View>
 
               <Text style={[styles.fieldLabel, { color: theme.sub }]}>
-                {isLiability ? 'OUTSTANDING AMOUNT' : form.cat === 'fd' ? 'PRINCIPAL AMOUNT' : 'CURRENT VALUE'}
+                {isLiability ? 'OUTSTANDING AMOUNT' : form.cat === 'fd' ? 'PRINCIPAL AMOUNT' : form.cat === 'rd' ? 'INITIAL AMOUNT' : 'CURRENT VALUE'}
               </Text>
               <View style={[styles.valueBox, { backgroundColor: theme.chipBg, borderColor: errors.value ? theme.neg : 'transparent' }]}>
                 <Text style={[styles.currencySymbol, { color: theme.sub }]}>{CUR[form.currency]?.symbol}</Text>
@@ -519,7 +547,6 @@ export function AddEditScreen() {
                         placeholder="0"
                         placeholderTextColor={theme.faint}
                         style={[styles.fdDurationInput, { color: theme.text }]}
-                        maxLength={3}
                       />
                       <Text style={[styles.fdDurationUnit, { color: theme.sub }]}>Day</Text>
                     </View>
@@ -574,6 +601,66 @@ export function AddEditScreen() {
                   )}
                 </>
               )}
+
+              {/* ── Recurring Deposit fields ──────────────────────────────── */}
+              {form.cat === 'rd' && (
+                <>
+                  <Text style={[styles.fieldLabel, { color: theme.sub, marginTop: 4 }]}>INTEREST RATE (% P.A.)</Text>
+                  <View style={[styles.valueBox, { backgroundColor: theme.chipBg, borderColor: errors.fdInterestRate ? theme.neg : 'transparent' }]}>
+                    <TextInput
+                      value={form.fdInterestRate}
+                      onChangeText={v => setField('fdInterestRate', v.replace(/[^0-9.]/g, ''))}
+                      keyboardType="decimal-pad"
+                      placeholder="e.g. 7.0"
+                      placeholderTextColor={theme.faint}
+                      style={[styles.valueInput, { color: theme.text }]}
+                    />
+                    <Text style={[styles.currencySymbol, { color: theme.sub, marginRight: 12 }]}>%</Text>
+                  </View>
+
+                  <Text style={[styles.fieldLabel, { color: theme.sub }]}>START DATE</Text>
+                  <View style={styles.fdDateRow}>
+                    <View style={[styles.fdDateBox, { backgroundColor: theme.chipBg, borderColor: 'transparent' }]}>
+                      <TextInput
+                        value={form.fdStartDay}
+                        onChangeText={v => setField('fdStartDay', v.replace(/[^0-9]/g, ''))}
+                        keyboardType="number-pad"
+                        placeholder="DD"
+                        placeholderTextColor={theme.faint}
+                        style={[styles.fdDateInput, { color: theme.text }]}
+                        maxLength={2}
+                      />
+                      <Text style={[styles.fdDurationUnit, { color: theme.sub }]}>DD</Text>
+                    </View>
+                    <Text style={[styles.fdDateSep, { color: theme.faint }]}>/</Text>
+                    <View style={[styles.fdDateBox, { backgroundColor: theme.chipBg, borderColor: 'transparent' }]}>
+                      <TextInput
+                        value={form.fdStartMonth}
+                        onChangeText={v => setField('fdStartMonth', v.replace(/[^0-9]/g, ''))}
+                        keyboardType="number-pad"
+                        placeholder="MM"
+                        placeholderTextColor={theme.faint}
+                        style={[styles.fdDateInput, { color: theme.text }]}
+                        maxLength={2}
+                      />
+                      <Text style={[styles.fdDurationUnit, { color: theme.sub }]}>MM</Text>
+                    </View>
+                    <Text style={[styles.fdDateSep, { color: theme.faint }]}>/</Text>
+                    <View style={[styles.fdDateBox, { flex: 1.4, backgroundColor: theme.chipBg, borderColor: 'transparent' }]}>
+                      <TextInput
+                        value={form.fdStartYear}
+                        onChangeText={v => setField('fdStartYear', v.replace(/[^0-9]/g, ''))}
+                        keyboardType="number-pad"
+                        placeholder="YYYY"
+                        placeholderTextColor={theme.faint}
+                        style={[styles.fdDateInput, { color: theme.text }]}
+                        maxLength={4}
+                      />
+                      <Text style={[styles.fdDurationUnit, { color: theme.sub }]}>YYYY</Text>
+                    </View>
+                  </View>
+                </>
+              )}
             </>
           )}
 
@@ -592,30 +679,42 @@ export function AddEditScreen() {
             />
           </View>
 
-          {/* Recurring Contribution — manual assets only */}
-          {!tracked && (
+          {/* Recurring Contribution — hidden for bank/fd/realestate; always-on for rd; toggle for others */}
+          {form.cat !== 'bank' && form.cat !== 'fd' && form.cat !== 'realestate' && (
             <>
               <View style={[styles.rcDivider, { borderTopColor: theme.line }]} />
-              <View style={styles.rcToggleRow}>
-                <View style={{ flex: 1, marginRight: 12 }}>
-                  <Text style={[styles.rcToggleLabel, { color: theme.text }]}>Recurring Contribution</Text>
-                  <Text style={[styles.rcToggleSub, { color: theme.sub }]}>
-                    Automatically add a fixed amount at regular intervals
-                  </Text>
-                </View>
-                <Switch
-                  value={form.recurringContributionEnabled}
-                  onValueChange={v => setForm(prev => ({ ...prev, recurringContributionEnabled: v }))}
-                  trackColor={{ false: theme.line, true: accent.solid + 'aa' }}
-                  thumbColor={form.recurringContributionEnabled ? accent.solid : theme.sub}
-                  accessibilityLabel="Toggle recurring contribution"
-                  accessibilityRole="switch"
-                />
-              </View>
 
-              {form.recurringContributionEnabled && (
+              {/* RD: no toggle — fields shown directly */}
+              {form.cat === 'rd' ? (
+                <Text style={[styles.rcToggleLabel, { color: theme.text, marginBottom: 16 }]}>
+                  {(RECURRING_CONTRIBUTION_FREQUENCIES.find(f => f.value === form.recurringContributionFrequency)?.label ?? 'Monthly') + ' Instalment'}
+                </Text>
+              ) : (
+                <View style={styles.rcToggleRow}>
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text style={[styles.rcToggleLabel, { color: theme.text }]}>Recurring Contribution</Text>
+                    <Text style={[styles.rcToggleSub, { color: theme.sub }]}>
+                      Automatically add a fixed amount at regular intervals
+                    </Text>
+                  </View>
+                  <Switch
+                    value={form.recurringContributionEnabled}
+                    onValueChange={v => setForm(prev => ({ ...prev, recurringContributionEnabled: v }))}
+                    trackColor={{ false: theme.line, true: accent.solid + 'aa' }}
+                    thumbColor={form.recurringContributionEnabled ? accent.solid : theme.sub}
+                    accessibilityLabel="Toggle recurring contribution"
+                    accessibilityRole="switch"
+                  />
+                </View>
+              )}
+
+              {(form.cat === 'rd' || form.recurringContributionEnabled) && (
                 <>
-                  <Text style={[styles.fieldLabel, { color: theme.sub }]}>AMOUNT PER PERIOD</Text>
+                  <Text style={[styles.fieldLabel, { color: theme.sub }]}>
+                    {form.cat === 'rd'
+                      ? (RECURRING_CONTRIBUTION_FREQUENCIES.find(f => f.value === form.recurringContributionFrequency)?.label ?? 'Monthly').toUpperCase() + ' INSTALMENT'
+                      : 'AMOUNT PER PERIOD'}
+                  </Text>
                   <View style={[styles.valueBox, { backgroundColor: theme.chipBg, borderColor: errors.recurringContributionAmount ? theme.neg : 'transparent' }]}>
                     <Text style={[styles.currencySymbol, { color: theme.sub }]}>{CUR[form.currency]?.symbol}</Text>
                     <TextInput

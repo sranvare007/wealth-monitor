@@ -1,12 +1,15 @@
 import type { Asset, Category, Totals, DistributionSegment } from '../types';
 import { CATEGORIES, CAT } from '../data/categories';
 import { convert } from './currency';
-import { calcFdCurrentValue } from './fd';
+import { calcFdCurrentValue, calcRdCurrentValue } from './fd';
 
 export function assetBaseValue(asset: Asset, base: string): number {
-  const v = asset.cat === 'fd' && asset.fdInterestRate != null && asset.fdStartDate != null
-    ? calcFdCurrentValue(asset)
-    : asset.value;
+  let v = asset.value;
+  if (asset.cat === 'fd' && asset.fdInterestRate != null && asset.fdStartDate != null) {
+    v = calcFdCurrentValue(asset);
+  } else if (asset.cat === 'rd' && asset.fdInterestRate != null && asset.fdStartDate != null) {
+    v = calcRdCurrentValue(asset);
+  }
   return convert(v, asset.currency, base);
 }
 
