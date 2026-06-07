@@ -821,9 +821,6 @@ function MFResultRow({ fund, theme, isLast, onPress }: {
       </View>
       <View style={resultS.info}>
         <Text style={[resultS.symbol, { color: theme.text, fontSize: 13 }]} numberOfLines={2}>{fund.schemeName}</Text>
-        {fund.schemeCategory ? (
-          <Text style={[resultS.name, { color: theme.sub }]} numberOfLines={1}>{fund.schemeCategory}</Text>
-        ) : null}
       </View>
       <Icon name="chevR" size={16} color={theme.faint} strokeWidth={2.2} />
     </TouchableOpacity>

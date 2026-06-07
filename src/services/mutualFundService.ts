@@ -3,8 +3,6 @@ const BASE = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/mu
 export type MFSearchResult = {
   schemeCode: number;
   schemeName: string;
-  fundHouse?: string;
-  schemeCategory?: string;
 };
 
 export type MFNavResult = {
@@ -16,16 +14,19 @@ export type MFNavResult = {
 
 export async function searchMutualFunds(q: string): Promise<MFSearchResult[]> {
   if (!q.trim()) return [];
-  const res = await fetch(`${BASE}/search?q=${encodeURIComponent(q.trim())}`);
+  const res = await fetch(`${BASE}/db-search?q=${encodeURIComponent(q.trim())}`, {
+    headers: { accept: 'application/json' },
+  });
   if (!res.ok) throw new Error(`MF search failed: ${res.status}`);
   const json = await res.json();
-  const raw: unknown[] = Array.isArray(json) ? json : (json.data ?? []);
-  return raw.map((r: any) => ({
-    schemeCode: Number(r.schemeCode ?? r.scheme_code ?? r.id ?? 0),
-    schemeName: String(r.schemeName ?? r.scheme_name ?? r.name ?? ''),
-    fundHouse: r.fundHouse ?? r.fund_house ?? undefined,
-    schemeCategory: r.schemeCategory ?? r.scheme_category ?? r.category ?? undefined,
-  })).filter(r => r.schemeCode !== 0 && r.schemeName !== '');
+  // Response shape: { success, data: [{ schemeCode, schemeName, isinGrowth, ... }] }
+  const raw: any[] = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+  return raw
+    .map(r => ({
+      schemeCode: Number(r.schemeCode ?? r.scheme_code ?? 0),
+      schemeName: String(r.schemeName ?? r.scheme_name ?? ''),
+    }))
+    .filter(r => r.schemeCode !== 0 && r.schemeName !== '');
 }
 
 export async function fetchMFLatestNAV(schemeCode: number): Promise<MFNavResult> {
