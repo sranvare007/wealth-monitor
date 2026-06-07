@@ -9,8 +9,8 @@ export function seedAssets(): Asset[] {
   ): Asset => ({ id, cat, name, value, currency, updated: now - daysAgo * day, note });
 
   return [
-    a('a1',  'cash',       'HDFC Savings',           452_000,  'INR', 2),
-    a('a2',  'cash',       'Emergency Fund',          200_000,  'INR', 12),
+    a('a1',  'bank',       'HDFC Savings',           452_000,  'INR', 2),
+    a('a2',  'fd',         'Emergency Fund FD',       200_000,  'INR', 12),
     a('a3',  'stocks',     'Nifty 50 Index Fund',   1_240_000,  'INR', 5),
     a('a4',  'stocks',     'US Tech Portfolio',        18_500,  'USD', 3, 'Vested RSUs + brokerage'),
     a('a5',  'stocks',     'Parag Parikh Flexi Cap',  680_000,  'INR', 5),

@@ -2,7 +2,9 @@ import type { Category } from '../types';
 import type { IconName } from '../components/common/Icon';
 
 export const CATEGORIES: Category[] = [
-  { id: 'cash',       label: 'Cash & Bank',          short: 'Cash',     color: '#10B981', icon: 'bank' },
+  { id: 'bank',       label: 'Bank Deposit',          short: 'Bank',     color: '#10B981', icon: 'bank' },
+  { id: 'fd',         label: 'Fixed Deposit (FD)',    short: 'FD',       color: '#14B8A6', icon: 'shield' },
+  { id: 'rd',         label: 'Recurring Deposit (RD)',short: 'RD',       color: '#06B6D4', icon: 'wallet' },
   { id: 'stocks',     label: 'Stocks & Funds',        short: 'Stocks',   color: '#6366F1', icon: 'trending' },
   { id: 'realestate', label: 'Real Estate',           short: 'Property', color: '#F97316', icon: 'home' },
   { id: 'crypto',     label: 'Crypto',                short: 'Crypto',   color: '#A855F7', icon: 'coin' },

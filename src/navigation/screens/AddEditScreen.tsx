@@ -60,7 +60,7 @@ type FormErrors = {
 };
 
 const BLANK_FORM: FormState = {
-  cat: 'cash',
+  cat: 'bank',
   name: '',
   value: '',
   currency: 'INR',
