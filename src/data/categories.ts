@@ -9,6 +9,7 @@ export const CATEGORIES: Category[] = [
   { id: 'realestate', label: 'Real Estate',           short: 'Property', color: '#F97316', icon: 'home' },
   { id: 'crypto',     label: 'Crypto',                short: 'Crypto',   color: '#A855F7', icon: 'coin' },
   { id: 'gold',       label: 'Gold & Commodities',    short: 'Gold',     color: '#EAB308', icon: 'gem' },
+  { id: 'mf',         label: 'Mutual Funds',           short: 'MF',       color: '#3B82F6', icon: 'briefcase' },
   { id: 'custom',     label: 'Other Assets',          short: 'Other',    color: '#0EA5E9', icon: 'grid' },
   { id: 'loans',      label: 'Loans & Liabilities',   short: 'Loans',    color: '#F43F5E', icon: 'minus', liability: true },
 ];

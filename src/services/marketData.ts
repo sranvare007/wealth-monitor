@@ -139,7 +139,7 @@ export async function searchStocksAPI(query: string, limit = 20): Promise<StockI
 }
 
 
-export const TRACKED_CATS = ['stocks', 'crypto', 'gold'] as const;
+export const TRACKED_CATS = ['stocks', 'crypto', 'gold', 'mf'] as const;
 export type TrackedCat = (typeof TRACKED_CATS)[number];
 
 export function isTrackedCat(cat: string): cat is TrackedCat {

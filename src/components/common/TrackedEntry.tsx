@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   Modal, ScrollView, Platform, KeyboardAvoidingView, ActivityIndicator,
@@ -13,6 +13,7 @@ import {
   getGoldRates,
   type StockInfo,
 } from '../../services/marketData';
+import { searchMutualFunds, fetchMFLatestNAV, type MFSearchResult } from '../../services/mutualFundService';
 import { searchCryptosDB, type CryptoInfoRow } from '../../db/queries/crypto_info';
 import { useDatabase } from '../../db/DatabaseContext';
 import { formatMoney, convert, CURRENCIES } from '../../utils/currency';
@@ -34,6 +35,13 @@ export type TrackedFormFields = {
   changePct: number;
   name: string;
   currency: string;
+  // Mutual Fund fields
+  mfSchemeCode: number;
+  mfSchemeName: string;
+  mfUnits: string;
+  mfAmount: string;
+  mfNav: number;
+  mfNavDate: string;
 };
 
 export type TrackedErrors = {
@@ -41,6 +49,8 @@ export type TrackedErrors = {
   qty?: boolean;
   weight?: boolean;
   price?: boolean;
+  mfScheme?: boolean;
+  mfQty?: boolean;
 };
 
 type Props = {
@@ -792,20 +802,266 @@ const emptyS = StyleSheet.create({
   text: { fontSize: 13.5, fontFamily: FONTS.jakarta, textAlign: 'center' },
 });
 
+// ─── MutualFundEntry ──────────────────────────────────────────────────────────
+
+function MFResultRow({ fund, theme, isLast, onPress }: {
+  fund: MFSearchResult; theme: ThemeColors; isLast: boolean; onPress: () => void;
+}) {
+  const color = CAT['mf']?.color ?? '#3B82F6';
+  const initials = fund.schemeName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[resultS.row, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.line }]}
+      accessibilityRole="button"
+      accessibilityLabel={fund.schemeName}
+    >
+      <View style={[badgeS.wrap, { width: 38, height: 38, borderRadius: 11, backgroundColor: color + '1F' }]}>
+        <Text style={[badgeS.text, { fontSize: 12, color }]}>{initials}</Text>
+      </View>
+      <View style={resultS.info}>
+        <Text style={[resultS.symbol, { color: theme.text, fontSize: 13 }]} numberOfLines={2}>{fund.schemeName}</Text>
+        {fund.schemeCategory ? (
+          <Text style={[resultS.name, { color: theme.sub }]} numberOfLines={1}>{fund.schemeCategory}</Text>
+        ) : null}
+      </View>
+      <Icon name="chevR" size={16} color={theme.faint} strokeWidth={2.2} />
+    </TouchableOpacity>
+  );
+}
+
+function MFSelectedCard({ schemeName, nav, navDate, theme, accent, onChangePress, navLoading }: {
+  schemeName: string; nav: number; navDate: string;
+  theme: ThemeColors; accent: AccentDef;
+  onChangePress: () => void; navLoading?: boolean;
+}) {
+  const color = CAT['mf']?.color ?? '#3B82F6';
+  const initials = schemeName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  return (
+    <TouchableOpacity
+      onPress={onChangePress}
+      accessibilityLabel="Change mutual fund"
+      accessibilityRole="button"
+      style={[selectedS.card, { backgroundColor: theme.chipBg }]}
+    >
+      <View style={[badgeS.wrap, { width: 44, height: 44, borderRadius: 13, backgroundColor: color + '1F' }]}>
+        <Text style={[badgeS.text, { fontSize: 14, color }]}>{initials}</Text>
+      </View>
+      <View style={selectedS.info}>
+        <Text style={[selectedS.symbol, { color: theme.text, fontSize: 14 }]} numberOfLines={2}>{schemeName}</Text>
+        {navLoading ? (
+          <View style={selectedS.priceRow}>
+            <ActivityIndicator size="small" color={accent.solid} />
+            <Text style={[selectedS.fetchingText, { color: theme.sub }]}>Fetching NAV…</Text>
+          </View>
+        ) : nav > 0 ? (
+          <View style={selectedS.priceRow}>
+            <Text style={[selectedS.price, { color: theme.text }]}>NAV ₹{nav.toFixed(4)}</Text>
+            {navDate ? (
+              <Text style={[selectedS.badgeText, { color: theme.sub, fontSize: 11 }]}> · {navDate}</Text>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+      <Text style={[selectedS.changeBtn, { color: accent.solid }]}>Change</Text>
+    </TouchableOpacity>
+  );
+}
+
+function MutualFundEntry({ fields, setMany, theme, accent, base, errors }: Omit<Props, 'cat' | 'setField'> & { setField?: unknown }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<MFSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [navLoading, setNavLoading] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleQueryChange = useCallback((q: string) => {
+    setQuery(q);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!q.trim()) { setSearching(false); setResults([]); return; }
+    setSearching(true);
+    searchTimer.current = setTimeout(() => {
+      searchMutualFunds(q)
+        .then(rows => setResults(rows))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 400);
+  }, []);
+
+  const pick = useCallback(async (fund: MFSearchResult) => {
+    setPickerOpen(false);
+    setQuery('');
+    setResults([]);
+    setMany({ mfSchemeCode: fund.schemeCode, mfSchemeName: fund.schemeName, name: fund.schemeName, mfNav: 0, mfNavDate: '' });
+    setNavLoading(true);
+    try {
+      const navData = await fetchMFLatestNAV(fund.schemeCode);
+      // Cross-compute units/amount using the current field values captured in closure
+      const currentUnits  = parseFloat(fields.mfUnits) || 0;
+      const currentAmount = parseFloat(fields.mfAmount) || 0;
+      const newAmount = currentUnits > 0 ? (currentUnits * navData.nav).toFixed(2) : (currentAmount > 0 ? fields.mfAmount : '');
+      const newUnits  = currentUnits > 0 ? fields.mfUnits : (currentAmount > 0 ? (currentAmount / navData.nav).toFixed(4) : '');
+      const canonicalName = navData.schemeName || fund.schemeName;
+      setMany({ mfNav: navData.nav, mfNavDate: navData.navDate, mfUnits: newUnits, mfAmount: newAmount, mfSchemeName: canonicalName, name: canonicalName });
+    } catch {
+      // NAV unavailable — user can still proceed with manual entry
+    } finally {
+      setNavLoading(false);
+    }
+  }, [setMany, fields.mfUnits, fields.mfAmount]);
+
+  const openPicker  = () => { setQuery(''); setResults([]); setSearching(false); setPickerOpen(true); };
+  const closePicker = () => { setPickerOpen(false); setQuery(''); setResults([]); setSearching(false); };
+
+  if (!fields.mfSchemeCode) {
+    return (
+      <View>
+        <EntryLabel text="Find a mutual fund" theme={theme} />
+        <SearchTrigger
+          placeholder="Search e.g. HDFC Top 100, Parag Parikh"
+          hasError={errors.mfScheme}
+          theme={theme}
+          onPress={openPicker}
+        />
+        <SearchPickerModal
+          visible={pickerOpen}
+          query={query}
+          onChangeQuery={handleQueryChange}
+          onClose={closePicker}
+          placeholder="Search e.g. HDFC Top 100, Parag Parikh"
+          theme={theme}
+          accent={accent}
+        >
+          {searching ? (
+            <View style={emptyS.wrap}><ActivityIndicator color={accent.solid} /></View>
+          ) : results.length === 0 ? (
+            <View style={emptyS.wrap}>
+              <Text style={[emptyS.text, { color: theme.sub }]}>
+                {query.trim() ? `No results for "${query}"` : 'Type to search mutual funds…'}
+              </Text>
+            </View>
+          ) : (
+            results.map((f, i) => (
+              <MFResultRow key={f.schemeCode} fund={f} theme={theme} isLast={i === results.length - 1} onPress={() => pick(f)} />
+            ))
+          )}
+        </SearchPickerModal>
+      </View>
+    );
+  }
+
+  const units = parseFloat(fields.mfUnits) || 0;
+  const nav   = fields.mfNav;
+  const positionValue = units > 0 && nav > 0 ? units * nav : 0;
+
+  return (
+    <View>
+      <EntryLabel text="Mutual Fund" theme={theme} />
+      <MFSelectedCard
+        schemeName={fields.mfSchemeName}
+        nav={nav}
+        navDate={fields.mfNavDate}
+        theme={theme}
+        accent={accent}
+        onChangePress={openPicker}
+        navLoading={navLoading}
+      />
+      <SearchPickerModal
+        visible={pickerOpen}
+        query={query}
+        onChangeQuery={handleQueryChange}
+        onClose={closePicker}
+        placeholder="Search e.g. HDFC Top 100, Parag Parikh"
+        theme={theme}
+        accent={accent}
+      >
+        {searching ? (
+          <View style={emptyS.wrap}><ActivityIndicator color={accent.solid} /></View>
+        ) : results.length === 0 ? (
+          <View style={emptyS.wrap}>
+            <Text style={[emptyS.text, { color: theme.sub }]}>
+              {query.trim() ? `No results for "${query}"` : 'Type to search mutual funds…'}
+            </Text>
+          </View>
+        ) : (
+          results.map((f, i) => (
+            <MFResultRow key={f.schemeCode} fund={f} theme={theme} isLast={i === results.length - 1} onPress={() => pick(f)} />
+          ))
+        )}
+      </SearchPickerModal>
+
+      <EntryLabel text="Units" theme={theme} />
+      <QtyField
+        value={fields.mfUnits}
+        onChangeText={v => {
+          const c = v.replace(/[^0-9.]/g, '');
+          const u = parseFloat(c) || 0;
+          setMany({ mfUnits: c, mfAmount: u > 0 && nav > 0 ? (u * nav).toFixed(2) : '' });
+        }}
+        placeholder="e.g. 100.0000"
+        hasError={errors.mfQty}
+        theme={theme}
+      />
+
+      <View style={mfS.orRow}>
+        <View style={[mfS.orLine, { backgroundColor: theme.line }]} />
+        <Text style={[mfS.orLabel, { color: theme.sub }]}>OR</Text>
+        <View style={[mfS.orLine, { backgroundColor: theme.line }]} />
+      </View>
+
+      <EntryLabel text="Amount (₹)" theme={theme} />
+      <View style={[qtyS.wrap, { backgroundColor: theme.chipBg, borderColor: errors.mfQty ? theme.neg : 'transparent' }]}>
+        <TextInput
+          value={fields.mfAmount}
+          onChangeText={v => {
+            const c = v.replace(/[^0-9.]/g, '');
+            const a = parseFloat(c) || 0;
+            setMany({ mfAmount: c, mfUnits: a > 0 && nav > 0 ? (a / nav).toFixed(4) : '' });
+          }}
+          keyboardType="decimal-pad"
+          placeholder="e.g. 10000"
+          placeholderTextColor={theme.faint}
+          style={[qtyS.input, { color: theme.text }]}
+        />
+      </View>
+
+      {positionValue > 0 && !navLoading && (
+        <ValueReadout
+          value={positionValue}
+          currency="INR"
+          base={base}
+          theme={theme}
+          accent={accent}
+          formulaLine={`${units.toFixed(4)} units × ₹${nav.toFixed(4)} NAV`}
+        />
+      )}
+    </View>
+  );
+}
+
+const mfS = StyleSheet.create({
+  orRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 18, marginTop: 4 },
+  orLine:  { flex: 1, height: StyleSheet.hairlineWidth },
+  orLabel: { fontSize: 12, fontFamily: FONTS.jakartaBold, letterSpacing: 0.5 },
+});
+
 // ─── TrackedEntry dispatcher ──────────────────────────────────────────────────
 
 export function TrackedEntry({ cat, fields, setField, setMany, theme, accent, base, errors }: Props) {
   if (cat === 'stocks') return <StockEntry fields={fields} setField={setField} setMany={setMany} theme={theme} accent={accent} base={base} errors={errors} />;
   if (cat === 'crypto') return <CryptoEntry fields={fields} setField={setField} setMany={setMany} theme={theme} accent={accent} base={base} errors={errors} />;
   if (cat === 'gold')   return <GoldEntry fields={fields} setField={setField} setMany={setMany} theme={theme} accent={accent} base={base} errors={errors} />;
+  if (cat === 'mf')     return <MutualFundEntry fields={fields} setMany={setMany} theme={theme} accent={accent} base={base} errors={errors} />;
   return null;
 }
 
 // ─── Subtitle helper for asset list rows ─────────────────────────────────────
 
 export function trackedSubtitle(track: import('../../types').AssetTrack): string {
-  if (track.kind === 'stock')  return `${track.symbol} · ${track.exchange} · ${track.qty} sh`;
-  if (track.kind === 'crypto') return `${track.qty} ${track.symbol}`;
-  if (track.kind === 'gold')   return `${track.purity} · ${track.weight} g`;
+  if (track.kind === 'stock')        return `${track.symbol} · ${track.exchange} · ${track.qty} sh`;
+  if (track.kind === 'crypto')       return `${track.qty} ${track.symbol}`;
+  if (track.kind === 'gold')         return `${track.purity} · ${track.weight} g`;
+  if (track.kind === 'mutual_fund')  return `${track.units.toFixed(4)} units · NAV ₹${track.nav.toFixed(2)}`;
   return '';
 }

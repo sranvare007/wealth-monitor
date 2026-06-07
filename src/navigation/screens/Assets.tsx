@@ -204,7 +204,7 @@ export function AssetsScreen() {
                       baseCurrency,
                     )
                   : baseVal;
-                const displayChangePct = activeLive ? activeLive.changePct : a.track?.changePct;
+                const displayChangePct = activeLive ? activeLive.changePct : (a.track?.kind !== 'mutual_fund' ? a.track?.changePct : undefined);
 
                 // FD / RD display values
                 const isFd = a.cat === 'fd' && a.fdInterestRate != null && a.fdStartDate != null;
@@ -214,6 +214,8 @@ export function AssetsScreen() {
                 const fdMatured = isFd && isFdMatured(a);
                 const fdMaturityMs = isFd ? fdMaturityDateMs(a) : null;
 
+                const isMf = a.cat === 'mf' && a.track?.kind === 'mutual_fund';
+                const mfTrack = isMf && a.track?.kind === 'mutual_fund' ? a.track : null;
                 const isRd = a.cat === 'rd' && a.fdInterestRate != null && a.fdStartDate != null;
                 const rdInvested = isRd ? calcRdTotalInvested(a) : 0;
                 const rdInterest = isRd ? calcRdInterest(a) : 0;
@@ -233,7 +235,11 @@ export function AssetsScreen() {
                       <Text style={[styles.assetName, { color: theme.text }]} numberOfLines={1}>
                         {a.name}
                       </Text>
-                      {isFd ? (
+                      {isMf && mfTrack ? (
+                        <Text style={[styles.assetMeta, { color: theme.sub }]} numberOfLines={1}>
+                          {mfTrack.units.toFixed(4)} units  ·  NAV ₹{mfTrack.nav.toFixed(4)}
+                        </Text>
+                      ) : isFd ? (
                         <>
                           <Text style={[styles.assetMeta, { color: theme.sub }]} numberOfLines={1}>
                             {a.fdInterestRate}% p.a.
@@ -273,7 +279,11 @@ export function AssetsScreen() {
                       )}
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
-                      {isFd ? (
+                      {isMf && mfTrack ? (
+                        <Text style={[styles.assetValue, { color: theme.text }]}>
+                          {formatMoney(convert(a.value, 'INR', baseCurrency), baseCurrency, { compact: true })}
+                        </Text>
+                      ) : isFd ? (
                         <>
                           <Text style={[styles.assetValue, { color: theme.text }]}>
                             {formatMoney(convert(fdTotal, a.currency, baseCurrency), baseCurrency, { compact: true })}

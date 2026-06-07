@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, Switch,
   StyleSheet, KeyboardAvoidingView, Platform,
@@ -56,6 +56,13 @@ type FormState = {
   fdStartDay: string;
   fdStartMonth: string;
   fdStartYear: string;
+  // Mutual Fund fields
+  mfSchemeCode: number;
+  mfSchemeName: string;
+  mfUnits: string;
+  mfAmount: string;
+  mfNav: number;
+  mfNavDate: string;
 };
 
 type FormErrors = {
@@ -69,6 +76,8 @@ type FormErrors = {
   fdInterestRate?: boolean;
   fdDuration?: boolean;
   fdStartDate?: boolean;
+  mfScheme?: boolean;
+  mfQty?: boolean;
 };
 
 function todayParts(): { fdStartDay: string; fdStartMonth: string; fdStartYear: string } {
@@ -104,6 +113,12 @@ function blankForm(currency: string): FormState {
     fdDurationMonths: '',
     fdDurationDays: '',
     ...todayParts(),
+    mfSchemeCode: 0,
+    mfSchemeName: '',
+    mfUnits: '',
+    mfAmount: '',
+    mfNav: 0,
+    mfNavDate: '',
   };
 }
 
@@ -143,15 +158,15 @@ export function AddEditScreen() {
           ? String(editingAsset.recurringContributionAmount)
           : '',
         recurringContributionFrequency: editingAsset.recurringContributionFrequency ?? 'MONTHLY',
-        symbol:       tk && tk.kind !== 'gold' ? tk.symbol       : '',
+        symbol:       tk && (tk.kind === 'stock' || tk.kind === 'crypto') ? tk.symbol       : '',
         exchange:     tk && tk.kind === 'stock'  ? tk.exchange     : '',
         instrumentKey: tk && tk.kind === 'stock'  ? tk.instrumentKey : '',
         cryptoId:      tk && tk.kind === 'crypto' ? tk.cryptoId      : 0,
         purity:    tk && tk.kind === 'gold'   ? tk.purity    : '24K',
-        qty:       tk && tk.kind !== 'gold'   ? String(tk.qty)    : '',
+        qty:       tk && (tk.kind === 'stock' || tk.kind === 'crypto') ? String(tk.qty)    : '',
         weight:    tk && tk.kind === 'gold'   ? String(tk.weight) : '',
-        price:     tk && tk.kind !== 'gold'   ? tk.price    : (tk?.kind === 'gold' ? tk.perGram : 0),
-        changePct: tk ? tk.changePct : 0,
+        price:     tk && (tk.kind === 'stock' || tk.kind === 'crypto') ? tk.price : (tk?.kind === 'gold' ? tk.perGram : 0),
+        changePct: tk && tk.kind !== 'mutual_fund' ? tk.changePct : 0,
         fdInterestRate:  editingAsset.fdInterestRate  != null ? String(editingAsset.fdInterestRate)  : '',
         fdDurationYears: editingAsset.fdDurationYears != null ? String(editingAsset.fdDurationYears) : '',
         fdDurationMonths:editingAsset.fdDurationMonths!= null ? String(editingAsset.fdDurationMonths): '',
@@ -159,6 +174,12 @@ export function AddEditScreen() {
         fdStartDay:   String(startDate.getDate()).padStart(2, '0'),
         fdStartMonth: String(startDate.getMonth() + 1).padStart(2, '0'),
         fdStartYear:  String(startDate.getFullYear()),
+        mfSchemeCode: tk?.kind === 'mutual_fund' ? tk.schemeCode : 0,
+        mfSchemeName: tk?.kind === 'mutual_fund' ? tk.schemeName : '',
+        mfUnits:      tk?.kind === 'mutual_fund' ? String(tk.units) : '',
+        mfAmount:     tk?.kind === 'mutual_fund' ? (tk.units * tk.nav).toFixed(2) : '',
+        mfNav:        tk?.kind === 'mutual_fund' ? tk.nav : 0,
+        mfNavDate:    tk?.kind === 'mutual_fund' ? tk.navDate : '',
       });
     } else {
       setForm(blankForm(baseCurrency));
@@ -178,6 +199,7 @@ export function AddEditScreen() {
     setForm(prev => ({
       ...prev, cat: id, symbol: '', instrumentKey: '', cryptoId: 0, qty: '', weight: '',
       ...(id !== 'fd' ? { fdInterestRate: '', fdDurationYears: '', fdDurationMonths: '', fdDurationDays: '' } : {}),
+      ...(id !== 'mf' ? { mfSchemeCode: 0, mfSchemeName: '', mfUnits: '', mfAmount: '', mfNav: 0, mfNavDate: '' } : {}),
       // Always reset RC toggle; RD is the only category where it starts on
       recurringContributionEnabled: id === 'rd',
     }));
@@ -215,8 +237,49 @@ export function AddEditScreen() {
     return advanceByFrequency(Date.now(), form.recurringContributionFrequency);
   }, [form.recurringContributionEnabled, form.recurringContributionAmount, form.recurringContributionFrequency, editingAsset]);
 
+  // ── Mutual Fund submit ────────────────────────────────────────────────────
+  function submitMF() {
+    const errs: FormErrors = {};
+    if (!form.mfSchemeCode) errs.mfScheme = true;
+    const unitsVal = parseFloat(form.mfUnits);
+    const amountVal = parseFloat(form.mfAmount);
+    if (!(unitsVal > 0) && !(amountVal > 0)) errs.mfQty = true;
+    if (!(form.mfNav > 0)) errs.price = true;
+    setErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
+    const finalUnits  = unitsVal > 0 ? unitsVal : amountVal / form.mfNav;
+    const finalValue  = finalUnits * form.mfNav;
+
+    let rcNextDue: number | null = null;
+    if (form.recurringContributionEnabled && rcAmountVal > 0) {
+      const existing = editingAsset?.recurringContributionNextDue;
+      const freqChanged = editingAsset?.recurringContributionFrequency !== form.recurringContributionFrequency;
+      rcNextDue = (existing && existing > Date.now() && !freqChanged)
+        ? existing
+        : advanceByFrequency(Date.now(), form.recurringContributionFrequency);
+    }
+
+    saveAsset({
+      id: editingAsset?.id,
+      cat: 'mf',
+      name: form.mfSchemeName,
+      value: finalValue,
+      currency: 'INR',
+      note: form.note.trim(),
+      track: { kind: 'mutual_fund', schemeCode: form.mfSchemeCode, schemeName: form.mfSchemeName, units: finalUnits, nav: form.mfNav, navDate: form.mfNavDate },
+      recurringContributionEnabled: form.recurringContributionEnabled ? 1 : 0,
+      recurringContributionAmount: form.recurringContributionEnabled ? rcAmountVal : null,
+      recurringContributionFrequency: form.recurringContributionEnabled ? form.recurringContributionFrequency : null,
+      recurringContributionNextDue: rcNextDue,
+      recurringContributionLastApplied: editingAsset?.recurringContributionLastApplied ?? null,
+    });
+    navigation.goBack();
+  }
+
   // ── Submit ─────────────────────────────────────────────────────────────────
   function submit() {
+    if (form.cat === 'mf') { submitMF(); return; }
     if (tracked) { submitTracked(); return; }
 
     const errs: FormErrors = {};
@@ -365,8 +428,14 @@ export function AddEditScreen() {
     purity: form.purity, qty: form.qty, weight: form.weight,
     price: form.price, changePct: form.changePct,
     name: form.name, currency: form.currency,
+    mfSchemeCode: form.mfSchemeCode, mfSchemeName: form.mfSchemeName,
+    mfUnits: form.mfUnits, mfAmount: form.mfAmount,
+    mfNav: form.mfNav, mfNavDate: form.mfNavDate,
   };
-  const trackedErrors: TrackedErrors = { symbol: errors.symbol, qty: errors.qty, weight: errors.weight, price: errors.price };
+  const trackedErrors: TrackedErrors = {
+    symbol: errors.symbol, qty: errors.qty, weight: errors.weight, price: errors.price,
+    mfScheme: errors.mfScheme, mfQty: errors.mfQty,
+  };
   const convertedValue = !tracked && form.currency !== 'INR' && parseFloat(form.value) > 0
     ? convert(parseFloat(form.value) || 0, form.currency, 'INR')
     : null;
@@ -445,57 +514,58 @@ export function AddEditScreen() {
           ) : (
             <>
               <Text style={[styles.fieldLabel, { color: theme.sub }]}>ASSET NAME</Text>
-              <View style={[styles.inputBox, { backgroundColor: theme.chipBg, borderColor: errors.name ? theme.neg : 'transparent' }]}>
-                <TextInput
-                  value={form.name}
-                  onChangeText={v => setField('name', v)}
-                  placeholder={isLiability ? 'e.g. Home Loan' : form.cat === 'fd' ? 'e.g. SBI Fixed Deposit' : 'e.g. HDFC Savings'}
-                  placeholderTextColor={theme.faint}
-                  style={[styles.input, { color: theme.text }]}
-                  maxLength={60}
-                />
-              </View>
+                  <View style={[styles.inputBox, { backgroundColor: theme.chipBg, borderColor: errors.name ? theme.neg : 'transparent' }]}>
+                    <TextInput
+                      value={form.name}
+                      onChangeText={v => setField('name', v)}
+                      placeholder={isLiability ? 'e.g. Home Loan' : form.cat === 'fd' ? 'e.g. SBI Fixed Deposit' : 'e.g. HDFC Savings'}
+                      placeholderTextColor={theme.faint}
+                      style={[styles.input, { color: theme.text }]}
+                      maxLength={60}
+                    />
+                  </View>
 
-              <Text style={[styles.fieldLabel, { color: theme.sub }]}>
-                {isLiability ? 'OUTSTANDING AMOUNT' : form.cat === 'fd' ? 'PRINCIPAL AMOUNT' : form.cat === 'rd' ? 'INITIAL AMOUNT' : 'CURRENT VALUE'}
-              </Text>
-              <View style={[styles.valueBox, { backgroundColor: theme.chipBg, borderColor: errors.value ? theme.neg : 'transparent' }]}>
-                <Text style={[styles.currencySymbol, { color: theme.sub }]}>{CUR[form.currency]?.symbol}</Text>
-                <TextInput
-                  value={form.value}
-                  onChangeText={v => setField('value', v.replace(/[^0-9.]/g, ''))}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  placeholderTextColor={theme.faint}
-                  style={[styles.valueInput, { color: theme.text }]}
-                />
-              </View>
+                  <Text style={[styles.fieldLabel, { color: theme.sub }]}>
+                    {isLiability ? 'OUTSTANDING AMOUNT' : form.cat === 'fd' ? 'PRINCIPAL AMOUNT' : form.cat === 'rd' ? 'INITIAL AMOUNT' : 'CURRENT VALUE'}
+                  </Text>
+                  <View style={[styles.valueBox, { backgroundColor: theme.chipBg, borderColor: errors.value ? theme.neg : 'transparent' }]}>
+                    <Text style={[styles.currencySymbol, { color: theme.sub }]}>{CUR[form.currency]?.symbol}</Text>
+                    <TextInput
+                      value={form.value}
+                      onChangeText={v => setField('value', v.replace(/[^0-9.]/g, ''))}
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                      placeholderTextColor={theme.faint}
+                      style={[styles.valueInput, { color: theme.text }]}
+                    />
+                  </View>
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.currencyRow}>
-                {CURRENCIES.map(c => {
-                  const isSelected = form.currency === c.code;
-                  return (
-                    <TouchableOpacity
-                      key={c.code}
-                      onPress={() => setField('currency', c.code)}
-                      style={[styles.currencyChip, {
-                        borderColor: isSelected ? accent.solid : theme.line,
-                        backgroundColor: isSelected ? accent.solid + '20' : theme.chipBg,
-                      }]}
-                    >
-                      <Text style={[styles.currencyChipText, { color: isSelected ? accent.solid : theme.sub }]}>
-                        {c.symbol} {c.code}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.currencyRow}>
+                    {CURRENCIES.map(c => {
+                      const isSelected = form.currency === c.code;
+                      return (
+                        <TouchableOpacity
+                          key={c.code}
+                          onPress={() => setField('currency', c.code)}
+                          style={[styles.currencyChip, {
+                            borderColor: isSelected ? accent.solid : theme.line,
+                            backgroundColor: isSelected ? accent.solid + '20' : theme.chipBg,
+                          }]}
+                        >
+                          <Text style={[styles.currencyChipText, { color: isSelected ? accent.solid : theme.sub }]}>
+                            {c.symbol} {c.code}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
 
-              {convertedValue != null && (
-                <Text style={[styles.convertedHint, { color: theme.sub }]}>
-                  ≈ {formatMoney(convertedValue, 'INR')} in INR
-                </Text>
-              )}
+                  {convertedValue != null && (
+                    <Text style={[styles.convertedHint, { color: theme.sub }]}>
+                      ≈ {formatMoney(convertedValue, 'INR')} in INR
+                    </Text>
+                  )}
+
 
               {/* ── Fixed Deposit fields ────────────────────────────────── */}
               {form.cat === 'fd' && (
