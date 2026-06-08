@@ -8,6 +8,8 @@ export type RecurringContributionFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'Q
 
 export type AccentKey = 'indigo' | 'violet' | 'emerald' | 'ocean' | 'sunset';
 
+export type ThemeMode = 'light' | 'dark' | 'system';
+
 export type AssetTrack =
   | { kind: 'stock'; symbol: string; exchange: string; instrumentKey: string; qty: number; price: number; changePct: number; name: string; currency: string }
   | { kind: 'crypto'; cryptoId: number; symbol: string; qty: number; price: number; changePct: number; name: string }

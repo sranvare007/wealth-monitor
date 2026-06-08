@@ -1,7 +1,7 @@
 import React, {
   createContext, useContext, useState, useEffect, useRef,
 } from 'react';
-import type { Asset, Snapshot, AccentKey, Category, AssetTrack } from '../types';
+import type { Asset, Snapshot, AccentKey, Category, AssetTrack, ThemeMode } from '../types';
 import { seedAssets, seedSnapshots } from '../data/seed';
 import { computeTotals } from '../utils/networth';
 import { useDatabase } from '../db/DatabaseContext';
@@ -39,7 +39,7 @@ type AppContextValue = {
   hideBalance: boolean;
   onboardingDone: boolean;
   accentKey: AccentKey;
-  darkMode: boolean;
+  themeMode: ThemeMode;
   biometricEnabled: boolean;
   startAnimationEnabled: boolean;
   customCategories: Category[];
@@ -51,7 +51,7 @@ type AppContextValue = {
   completeOnboarding: (currency: string) => void;
   replayOnboarding: () => void;
   setAccentKey: (key: AccentKey) => void;
-  setDarkMode: (dark: boolean) => void;
+  setThemeMode: (mode: ThemeMode) => void;
   setBiometricEnabled: (enabled: boolean) => void;
   setStartAnimationEnabled: (enabled: boolean) => void;
   resetDemo: () => void;
@@ -73,6 +73,13 @@ type AppContextValue = {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+function parseThemeMode(v: string | null): ThemeMode {
+  if (v === 'dark' || v === 'light' || v === 'system') return v;
+  if (v === 'true') return 'dark';   // migrate old boolean string
+  if (v === 'false') return 'light'; // migrate old boolean string
+  return 'system';                   // default for new installs
+}
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -85,7 +92,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [hideBalance, setHideBalanceState] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(false);
   const [accentKey, setAccentKeyState] = useState<AccentKey>('indigo');
-  const [darkMode, setDarkModeState] = useState(false);
+  const [themeMode, setThemeModeState] = useState<ThemeMode>('system');
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
   const [startAnimationEnabled, setStartAnimationEnabledState] = useState(true);
 
@@ -163,7 +170,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setHideBalanceState(hideBalanceSetting === 'true');
       setOnboardingDone(onboardingDoneSetting === 'true');
       if (accentKeySetting) setAccentKeyState(accentKeySetting as AccentKey);
-      setDarkModeState(darkModeSetting === 'true');
+      setThemeModeState(parseThemeMode(darkModeSetting));
       setBiometricEnabledState(biometricEnabledSetting === 'true');
       // Default true when setting not yet written (first install)
       setStartAnimationEnabledState(startAnimationSetting !== 'false');
@@ -317,9 +324,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSetting(db, 'ACCENT_KEY', key).catch(console.error);
   }
 
-  function setDarkMode(dark: boolean) {
-    setDarkModeState(dark);
-    setSetting(db, 'DARK_MODE', String(dark)).catch(console.error);
+  function setThemeMode(mode: ThemeMode) {
+    setThemeModeState(mode);
+    setSetting(db, 'DARK_MODE', mode).catch(console.error);
   }
 
   function setBiometricEnabled(enabled: boolean) {
@@ -409,11 +416,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       loading,
-      assets, snapshots, baseCurrency, hideBalance, onboardingDone, accentKey, darkMode,
+      assets, snapshots, baseCurrency, hideBalance, onboardingDone, accentKey, themeMode,
       biometricEnabled, startAnimationEnabled,
       customCategories,
       saveAsset, removeAsset, updateLivePrices, setBaseCurrency, setHideBalance,
-      completeOnboarding, replayOnboarding, setAccentKey, setDarkMode,
+      completeOnboarding, replayOnboarding, setAccentKey, setThemeMode,
       setBiometricEnabled, setStartAnimationEnabled,
       resetDemo, clearAll,
       saveCustomCategory, removeCustomCategory,

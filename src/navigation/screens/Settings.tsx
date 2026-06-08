@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ScrollView, View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
+  Animated, type LayoutChangeEvent,
 } from 'react-native';
 import * as Updates from 'expo-updates';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,7 +13,7 @@ import { ACCENTS } from '../../constants/theme';
 import { computeTotals } from '../../utils/networth';
 import { formatMoney } from '../../utils/currency';
 import { checkBiometricCapability } from '../../hooks/useBiometricAuth';
-import type { AccentKey } from '../../types';
+import type { AccentKey, ThemeMode } from '../../types';
 import { FONTS } from '../../constants/fonts';
 
 const ACCENT_NAMES: Record<AccentKey, string> = {
@@ -22,7 +23,7 @@ const ACCENT_NAMES: Record<AccentKey, string> = {
 export function SettingsScreen() {
   const {
     assets, baseCurrency, accentKey, setAccentKey,
-    darkMode, setDarkMode,
+    themeMode, setThemeMode,
     biometricEnabled, setBiometricEnabled,
     startAnimationEnabled, setStartAnimationEnabled,
     resetDemo, clearAll,
@@ -35,6 +36,53 @@ export function SettingsScreen() {
   const bottomPad = 86 + Math.max(insets.bottom, 8) + 16;
 
   const totals = computeTotals(assets, baseCurrency, customCategories);
+
+  // ── Appearance segment animation ──────────────────────────────────────────
+  const MODES: ThemeMode[] = ['light', 'system', 'dark'];
+  const MODE_LABELS: Record<ThemeMode, string> = { light: 'Light', system: 'System', dark: 'Dark' };
+  const modeToIndex = (m: ThemeMode) => MODES.indexOf(m);
+
+  const [segWidth, setSegWidth] = useState(0);
+  const indicatorPos  = useRef(new Animated.Value(0)).current;
+  const btnStepRef    = useRef(0);
+  const prevModeRef   = useRef(themeMode);
+  const isFirstLayout = useRef(true);
+
+  const handleSegLayout = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    setSegWidth(w);
+    // padding 5 each side = 10, two gaps of 2px = 4
+    const btnWidth = (w - 10 - 4) / 3;
+    const step = btnWidth + 2;
+    btnStepRef.current = step;
+    if (isFirstLayout.current) {
+      isFirstLayout.current = false;
+      indicatorPos.setValue(modeToIndex(prevModeRef.current) * step);
+    }
+  };
+
+  useEffect(() => {
+    const prev   = modeToIndex(prevModeRef.current);
+    const target = modeToIndex(themeMode);
+    prevModeRef.current = themeMode;
+    if (prev === target || btnStepRef.current === 0) return;
+    const step = btnStepRef.current;
+    const sign = target > prev ? 1 : -1;
+    Animated.sequence([
+      Animated.timing(indicatorPos, {
+        toValue: prev * step - sign * step * 0.25,
+        duration: 70,
+        useNativeDriver: true,
+      }),
+      Animated.spring(indicatorPos, {
+        toValue: target * step,
+        damping: 16,
+        stiffness: 230,
+        mass: 0.85,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [themeMode]);
 
   // Biometric capability (hardware + enrollment status on this device)
   const [biometricHasHardware, setBiometricHasHardware] = useState(false);
@@ -222,22 +270,39 @@ export function SettingsScreen() {
             </View>
           </View>
 
-          {/* Dark mode toggle */}
-          <TouchableOpacity
-            onPress={() => setDarkMode(!darkMode)}
-            style={[styles.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.line }]}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: darkMode }}
-            accessibilityLabel="Dark mode"
-          >
-            <Text style={[styles.rowLabel, { color: theme.text }]}>Dark mode</Text>
-            <View style={[
-              styles.toggle,
-              { backgroundColor: darkMode ? accent.solid : theme.line },
-            ]}>
-              <View style={[styles.toggleThumb, { marginLeft: darkMode ? 20 : 2 }]} />
+          {/* Appearance mode — Light / System / Dark */}
+          <View style={[styles.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.line }]}>
+            <Text style={[styles.rowLabel, { color: theme.text }]}>Appearance</Text>
+            <View
+              style={[styles.modeSegment, { backgroundColor: theme.chipBg }]}
+              onLayout={handleSegLayout}
+            >
+              {/* Sliding indicator — sits behind the buttons */}
+              {segWidth > 0 && (
+                <Animated.View
+                  style={[
+                    styles.modeIndicator,
+                    { backgroundColor: accent.solid, width: (segWidth - 10 - 4) / 3 },
+                    { transform: [{ translateX: indicatorPos }] },
+                  ]}
+                />
+              )}
+              {MODES.map(m => (
+                <TouchableOpacity
+                  key={m}
+                  onPress={() => setThemeMode(m)}
+                  style={styles.modeSegBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={MODE_LABELS[m]}
+                  accessibilityState={{ selected: themeMode === m }}
+                >
+                  <Text style={[styles.modeSegText, { color: themeMode === m ? '#fff' : theme.sub }]}>
+                    {MODE_LABELS[m]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          </TouchableOpacity>
+          </View>
 
           {/* Startup animation toggle */}
           <TouchableOpacity
@@ -418,6 +483,11 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
+
+  modeSegment:   { flexDirection: 'row', borderRadius: 10, padding: 5, gap: 2 },
+  modeIndicator: { position: 'absolute', top: 5, bottom: 5, left: 5, borderRadius: 7 },
+  modeSegBtn:    { width: 64, paddingVertical: 4, alignItems: 'center', zIndex: 1 },
+  modeSegText:   { fontSize: 13, fontFamily: FONTS.jakartaBold },
 
   privacyRow:  { flexDirection: 'row', gap: 10, paddingHorizontal: 6, alignItems: 'flex-start', marginBottom: 8 },
   privacyText: { flex: 1, fontSize: 12.5, lineHeight: 19, fontFamily: FONTS.jakarta },
