@@ -9,6 +9,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { useAppState } from '../../store/AppContext';
 import { useTheme } from '../../hooks/useTheme';
 import { Icon } from '../../components/common/Icon';
+import { AnimatedToggle } from '../../components/common/AnimatedToggle';
 import { ACCENTS } from '../../constants/theme';
 import { computeTotals } from '../../utils/networth';
 import { formatMoney } from '../../utils/currency';
@@ -313,12 +314,7 @@ export function SettingsScreen() {
             accessibilityLabel="Startup animation"
           >
             <Text style={[styles.rowLabel, { color: theme.text }]}>Startup animation</Text>
-            <View style={[
-              styles.toggle,
-              { backgroundColor: startAnimationEnabled ? accent.solid : theme.line },
-            ]}>
-              <View style={[styles.toggleThumb, { marginLeft: startAnimationEnabled ? 20 : 2 }]} />
-            </View>
+            <AnimatedToggle value={startAnimationEnabled} onColor={accent.solid} offColor={theme.line} />
           </TouchableOpacity>
         </View>
 
@@ -344,15 +340,11 @@ export function SettingsScreen() {
                   : 'Require biometrics on app open'}
               </Text>
             </View>
-            <View style={[
-              styles.toggle,
-              { backgroundColor: biometricEnabled && biometricHasHardware ? accent.solid : theme.line },
-            ]}>
-              <View style={[
-                styles.toggleThumb,
-                { marginLeft: biometricEnabled && biometricHasHardware ? 20 : 2 },
-              ]} />
-            </View>
+            <AnimatedToggle
+              value={biometricEnabled && biometricHasHardware}
+              onColor={accent.solid}
+              offColor={theme.line}
+            />
           </TouchableOpacity>
         </View>
 
@@ -469,22 +461,7 @@ const styles = StyleSheet.create({
   accents:    { flexDirection: 'row', gap: 12 },
   swatch:     { flex: 1, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
 
-  toggle: {
-    width: 50, height: 30, borderRadius: 999,
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 3,
-  },
-  toggleThumb: {
-    width: 24, height: 24, borderRadius: 12,
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-
-  modeSegment:   { flexDirection: 'row', borderRadius: 10, padding: 5, gap: 2 },
+modeSegment:   { flexDirection: 'row', borderRadius: 10, padding: 5, gap: 2 },
   modeIndicator: { position: 'absolute', top: 5, bottom: 5, left: 5, borderRadius: 7 },
   modeSegBtn:    { width: 64, paddingVertical: 4, alignItems: 'center', zIndex: 1 },
   modeSegText:   { fontSize: 13, fontFamily: FONTS.jakartaBold },
