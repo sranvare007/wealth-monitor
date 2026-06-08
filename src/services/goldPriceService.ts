@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { fetchWithRetry } from '../utils/fetchWithRetry';
 import { getCachedGoldPrice, setCachedGoldPrice } from '../db/queries/gold_price';
 
 const GOLD_URL = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/gold/INR';
@@ -31,7 +32,7 @@ export function getLiveGoldRates(): GoldPriceData | null {
 
 async function fetchLiveGoldPrice(): Promise<GoldPriceData> {
   console.log('[GoldPrice] fetching →', GOLD_URL);
-  const res = await fetch(GOLD_URL);
+  const res = await fetchWithRetry(GOLD_URL);
   console.log('[GoldPrice] response status', res.status);
   const json = (await res.json()) as ApiResponse;
   if (!json.success || !json.data) throw new Error('Invalid gold price response');

@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { fetchWithRetry } from '../utils/fetchWithRetry';
 import { getCachedRates, setCachedRates } from '../db/queries/exchange_rates';
 
 const EXCHANGE_RATES_URL =
@@ -10,7 +11,7 @@ type ApiResponse = {
 };
 
 async function fetchLiveRates(): Promise<Record<string, number>> {
-  const res = await fetch(EXCHANGE_RATES_URL);
+  const res = await fetchWithRetry(EXCHANGE_RATES_URL);
   const json = (await res.json()) as ApiResponse;
   if (!json.success || !json.data?.rates) throw new Error('Invalid response');
   return json.data.rates;

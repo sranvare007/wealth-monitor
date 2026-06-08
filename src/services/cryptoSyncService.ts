@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { fetchWithRetry } from '../utils/fetchWithRetry';
 import { getCryptoCount, bulkInsertCryptos, type CryptoInfoRow } from '../db/queries/crypto_info';
 
 const CRYPTO_API_URL = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/crypto';
@@ -21,7 +22,7 @@ export async function syncCryptosIfNeeded(db: SQLiteDatabase): Promise<void> {
   const count = await getCryptoCount(db);
   if (count > 0) return;
 
-  const res = await fetch(CRYPTO_API_URL);
+  const res = await fetchWithRetry(CRYPTO_API_URL);
   if (!res.ok) throw new Error(`Crypto API HTTP ${res.status}`);
 
   const json = (await res.json()) as {

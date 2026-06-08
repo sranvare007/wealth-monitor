@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
 import {
   ScrollView, View, Text, TouchableOpacity, TextInput, StyleSheet, RefreshControl,
 } from 'react-native';
@@ -16,13 +16,16 @@ import { calcFdCurrentValue, fdMaturityDateMs, isFdMatured, calcRdCurrentValue, 
 import { FONTS } from '../../constants/fonts';
 import { fetchStockPrices, type StockLTP } from '../../services/stockPriceService';
 import { fetchCryptoPrices, type CryptoLTP } from '../../services/cryptoPriceService';
+import { fetchMFLatestNAV } from '../../services/mutualFundService';
+import { getGoldRates } from '../../services/marketData';
 import { getCryptoIdsBySymbols } from '../../db/queries/crypto_info';
 import { useDatabase } from '../../db/DatabaseContext';
 import { useAppForeground } from '../../hooks/useAppForeground';
 import { useToast } from '../../store/ToastContext';
+import type { AssetTrack } from '../../types';
 
 export function AssetsScreen() {
-  const { assets, baseCurrency, setDeleteTarget, customCategories } = useAppState();
+  const { assets, baseCurrency, setDeleteTarget, customCategories, updateLivePrices } = useAppState();
   const db = useDatabase();
   const toast = useToast();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,8 +56,28 @@ export function AssetsScreen() {
     [assets],
   );
 
+  const stockAssets = useMemo(
+    () => assets.filter(a => a.track?.kind === 'stock') as (typeof assets[0] & { track: Extract<NonNullable<typeof assets[0]['track']>, { kind: 'stock' }> })[],
+    [assets],
+  );
+
+  const goldAssets = useMemo(
+    () => assets.filter(a => a.track?.kind === 'gold') as (typeof assets[0] & { track: Extract<NonNullable<typeof assets[0]['track']>, { kind: 'gold' }> })[],
+    [assets],
+  );
+
+  const mfAssets = useMemo(
+    () => assets.filter(a => a.track?.kind === 'mutual_fund') as (typeof assets[0] & { track: Extract<NonNullable<typeof assets[0]['track']>, { kind: 'mutual_fund' }> })[],
+    [assets],
+  );
+
+  // MF NAV only changes once per day — avoid fetching on every screen focus
+  const MF_NAV_TTL_MS = 60 * 60 * 1000; // 1 hour
+  const mfNavLastFetched = useRef<number>(0);
+
   const loadLivePrices = useCallback(async (force = false) => {
-    if (stockInstrumentKeys.length === 0 && cryptoAssets.length === 0) return;
+    const hasTracked = stockInstrumentKeys.length > 0 || cryptoAssets.length > 0 || goldAssets.length > 0 || mfAssets.length > 0;
+    if (!hasTracked) return;
     try {
       // Resolve crypto IDs: use stored cryptoId when available, fallback to DB symbol lookup
       let resolvedCryptoIds: number[] = [];
@@ -72,6 +95,8 @@ export function AssetsScreen() {
         stockInstrumentKeys.length > 0 ? fetchStockPrices(stockInstrumentKeys, force) : Promise.resolve({} as Record<string, StockLTP>),
         resolvedCryptoIds.length > 0 ? fetchCryptoPrices(resolvedCryptoIds, force) : Promise.resolve({} as Record<number, CryptoLTP>),
       ]);
+
+      // Update live display state immediately
       if (Object.keys(stockPrices).length > 0) setLivePrices(prev => ({ ...prev, ...stockPrices }));
       if (Object.keys(cryptoPrices).length > 0) {
         setLiveCryptoPrices(prev => ({ ...prev, ...cryptoPrices }));
@@ -82,10 +107,66 @@ export function AssetsScreen() {
           if (Object.keys(bySymbol).length > 0) setLiveCryptoPricesBySymbol(prev => ({ ...prev, ...bySymbol }));
         }
       }
+
+      // Collect DB updates so asset.value and track prices stay current across the app
+      const dbUpdates: Array<{ id: string; value: number; track: AssetTrack }> = [];
+
+      // Stocks
+      for (const asset of stockAssets) {
+        const live = stockPrices[asset.track.instrumentKey];
+        if (!live) continue;
+        const newValue = asset.track.qty * live.price;
+        if (force || Math.abs(newValue - asset.value) > 0.001) {
+          dbUpdates.push({ id: asset.id, value: newValue, track: { ...asset.track, price: live.price, changePct: live.changePct } });
+        }
+      }
+
+      // Crypto
+      for (const asset of cryptoAssets) {
+        const cryptoNumId = asset.track.cryptoId > 0 ? asset.track.cryptoId : symbolToId.get(asset.track.symbol);
+        if (!cryptoNumId) continue;
+        const live = cryptoPrices[cryptoNumId];
+        if (!live) continue;
+        const newValue = asset.track.qty * live.price;
+        if (force || Math.abs(newValue - asset.value) > 0.001) {
+          dbUpdates.push({ id: asset.id, value: newValue, track: { ...asset.track, price: live.price, changePct: live.changePct } });
+        }
+      }
+
+      // Gold — use in-memory live rates (already loaded at app startup)
+      const liveGold = getGoldRates();
+      for (const asset of goldAssets) {
+        const livePerGram = asset.track.purity === '22K' ? liveGold.perGram22k : liveGold.perGram24k;
+        const newValue = asset.track.weight * livePerGram;
+        if (force || Math.abs(newValue - asset.value) > 0.01) {
+          dbUpdates.push({ id: asset.id, value: newValue, track: { ...asset.track, perGram: livePerGram } });
+        }
+      }
+
+      // Mutual Funds — fetch NAV with a TTL to avoid fetching on every screen focus
+      const shouldFetchMF = mfAssets.length > 0 && (force || Date.now() - mfNavLastFetched.current > MF_NAV_TTL_MS);
+      if (shouldFetchMF) {
+        const navResults = await Promise.allSettled(
+          mfAssets.map(asset => fetchMFLatestNAV(asset.track.schemeCode)),
+        );
+        mfNavLastFetched.current = Date.now();
+        navResults.forEach((result, i) => {
+          if (result.status !== 'fulfilled') return;
+          const asset = mfAssets[i];
+          const newNAV = result.value.nav;
+          if (!(newNAV > 0)) return;
+          const newValue = asset.track.units * newNAV;
+          if (force || Math.abs(newValue - asset.value) > 0.001) {
+            dbUpdates.push({ id: asset.id, value: newValue, track: { ...asset.track, nav: newNAV, navDate: result.value.navDate } });
+          }
+        });
+      }
+
+      updateLivePrices(dbUpdates);
     } catch {
       toast('Price fetch could not be completed. Try again later.', 'error');
     }
-  }, [stockInstrumentKeys, cryptoAssets, db, toast]);
+  }, [stockInstrumentKeys, cryptoAssets, stockAssets, goldAssets, mfAssets, MF_NAV_TTL_MS, db, toast, updateLivePrices]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);

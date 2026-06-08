@@ -1,3 +1,5 @@
+import { fetchWithRetry } from '../utils/fetchWithRetry';
+
 const BASE = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/mutual-funds';
 
 export type MFSearchResult = {
@@ -14,7 +16,7 @@ export type MFNavResult = {
 
 export async function searchMutualFunds(q: string): Promise<MFSearchResult[]> {
   if (!q.trim()) return [];
-  const res = await fetch(`${BASE}/db-search?q=${encodeURIComponent(q.trim())}`, {
+  const res = await fetchWithRetry(`${BASE}/db-search?q=${encodeURIComponent(q.trim())}`, {
     headers: { accept: 'application/json' },
   });
   if (!res.ok) throw new Error(`MF search failed: ${res.status}`);
@@ -30,7 +32,7 @@ export async function searchMutualFunds(q: string): Promise<MFSearchResult[]> {
 }
 
 export async function fetchMFLatestNAV(schemeCode: number): Promise<MFNavResult> {
-  const res = await fetch(`${BASE}/${schemeCode}/latest`);
+  const res = await fetchWithRetry(`${BASE}/${schemeCode}/latest`);
   if (!res.ok) throw new Error(`NAV fetch failed: ${res.status}`);
   const json = await res.json();
   // Response shape: { success, data: { meta: {...}, data: [{ date, nav }] } }

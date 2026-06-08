@@ -1,7 +1,7 @@
 import React, {
   createContext, useContext, useState, useEffect, useRef,
 } from 'react';
-import type { Asset, Snapshot, AccentKey, Category } from '../types';
+import type { Asset, Snapshot, AccentKey, Category, AssetTrack } from '../types';
 import { seedAssets, seedSnapshots } from '../data/seed';
 import { computeTotals } from '../utils/networth';
 import { useDatabase } from '../db/DatabaseContext';
@@ -45,6 +45,7 @@ type AppContextValue = {
   customCategories: Category[];
   saveAsset: (asset: Omit<Asset, 'id' | 'updated'> & { id?: string }) => void;
   removeAsset: (assetId: string) => void;
+  updateLivePrices: (updates: Array<{ id: string; value: number; track: AssetTrack }>) => void;
   setBaseCurrency: (code: string) => void;
   setHideBalance: (hide: boolean) => void;
   completeOnboarding: (currency: string) => void;
@@ -268,6 +269,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).catch(console.error);
   }
 
+  function updateLivePrices(updates: Array<{ id: string; value: number; track: AssetTrack }>) {
+    if (updates.length === 0) return;
+    const updateMap = new Map(updates.map(u => [u.id, u]));
+    const next = assets.map(a => {
+      const u = updateMap.get(a.id);
+      if (!u) return a;
+      return { ...a, value: u.value, track: u.track };
+    });
+    const snap = buildSnapshot(next, baseCurrency, snapshots);
+    setAssets(next);
+    if (snap) setSnapshots(prev => [...prev, snap]);
+    const changed = next.filter(a => updateMap.has(a.id));
+    db.withTransactionAsync(async () => {
+      for (const asset of changed) await upsertAsset(db, asset);
+      if (snap) await insertSnapshot(db, snap);
+    }).catch(console.error);
+  }
+
   function setBaseCurrency(code: string) {
     setBaseCurrencyState(code);
     setSetting(db, 'BASE_CURRENCY', code).catch(console.error);
@@ -393,7 +412,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       assets, snapshots, baseCurrency, hideBalance, onboardingDone, accentKey, darkMode,
       biometricEnabled, startAnimationEnabled,
       customCategories,
-      saveAsset, removeAsset, setBaseCurrency, setHideBalance,
+      saveAsset, removeAsset, updateLivePrices, setBaseCurrency, setHideBalance,
       completeOnboarding, replayOnboarding, setAccentKey, setDarkMode,
       setBiometricEnabled, setStartAnimationEnabled,
       resetDemo, clearAll,

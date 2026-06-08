@@ -34,6 +34,7 @@ export function SplashAnimation({ onDone }: Props) {
           style={styles.animation}
         />
         <Text style={[styles.appName, { color: theme.text }]}>Wealth Monitor</Text>
+        <Text style={[styles.tagline, { color: theme.sub }]}>Every rupee, accounted for.</Text>
       </View>
     </Animated.View>
   );
@@ -58,5 +59,11 @@ const styles = StyleSheet.create({
     fontSize: 22,
     letterSpacing: -0.4,
     fontFamily: FONTS.jakartaExtraBold,
+  },
+  tagline: {
+    fontSize: 13,
+    letterSpacing: 0.2,
+    fontFamily: FONTS.jakarta,
+    marginTop: -8,
   },
 });
