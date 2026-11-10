@@ -36,3 +36,9 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+
+# local build artifacts
+*.apk
+
+# Serena tool config
+.serena/
