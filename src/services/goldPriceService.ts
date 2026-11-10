@@ -1,8 +1,9 @@
+import { API_BASE_URL } from './api';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { fetchWithRetry } from '../utils/fetchWithRetry';
 import { getCachedGoldPrice, setCachedGoldPrice } from '../db/queries/gold_price';
 
-const GOLD_URL = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/gold/INR';
+const GOLD_URL = `${API_BASE_URL}/gold/INR`;
 const CURRENCY = 'INR';
 const TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 

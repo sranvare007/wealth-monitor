@@ -13,7 +13,9 @@ import {
   insertCustomCategory,
   updateCustomCategory as dbUpdateCustomCategory,
   deleteCustomCategory as dbDeleteCustomCategory,
+  clearCustomCategories,
 } from '../db/queries/custom_categories';
+import type { LocalDataset } from '../services/syncApi';
 import { generateId } from '../utils/uuid';
 import { CATEGORIES } from '../data/categories';
 import { applyDueContributions } from '../services/recurringContributionService';
@@ -56,6 +58,7 @@ type AppContextValue = {
   setStartAnimationEnabled: (enabled: boolean) => void;
   resetDemo: () => void;
   clearAll: () => void;
+  hydrateFromCloud: (dataset: LocalDataset) => Promise<void>;
   saveCustomCategory: (data: { id?: string; label: string; icon: string; color: string; liability: boolean }) => void;
   removeCustomCategory: (catId: string) => void;
   deleteTarget: Asset | null;
@@ -376,6 +379,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).catch(console.error);
   }
 
+  // ── Cloud sync hydration ──────────────────────────────────────────────────
+
+  function applyCloudSettings(settings: Record<string, string>) {
+    if (settings.BASE_CURRENCY) setBaseCurrencyState(settings.BASE_CURRENCY);
+    if (settings.HIDE_BALANCE != null) setHideBalanceState(settings.HIDE_BALANCE === 'true');
+    if (settings.ACCENT_KEY) setAccentKeyState(settings.ACCENT_KEY as AccentKey);
+    if (settings.DARK_MODE) setThemeModeState(parseThemeMode(settings.DARK_MODE));
+    if (settings.START_ANIMATION != null) {
+      setStartAnimationEnabledState(settings.START_ANIMATION !== 'false');
+    }
+  }
+
+  // Replace the local dataset with the authoritative copy pulled from the server.
+  // Mirrors the backend's full-replace model: clear local tables, then re-insert.
+  async function hydrateFromCloud(dataset: LocalDataset): Promise<void> {
+    const { assets: cloudAssets, snapshots: cloudSnaps, categories: cloudCats, settings } = dataset;
+
+    setAssets(cloudAssets);
+    setSnapshots(cloudSnaps);
+    setCustomCategories(cloudCats);
+    applyCloudSettings(settings);
+
+    await db.withTransactionAsync(async () => {
+      await clearAssets(db);
+      await clearSnapshots(db);
+      await clearCustomCategories(db);
+      for (const asset of cloudAssets) await upsertAsset(db, asset);
+      for (const snap of cloudSnaps) await insertSnapshot(db, snap);
+      for (const cat of cloudCats) await insertCustomCategory(db, cat, Date.now());
+      for (const [key, value] of Object.entries(settings)) await setSetting(db, key, value);
+    });
+  }
+
   // ── Custom categories ─────────────────────────────────────────────────────
 
   function saveCustomCategory(data: { id?: string; label: string; icon: string; color: string; liability: boolean }) {
@@ -422,7 +458,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveAsset, removeAsset, updateLivePrices, setBaseCurrency, setHideBalance,
       completeOnboarding, replayOnboarding, setAccentKey, setThemeMode,
       setBiometricEnabled, setStartAnimationEnabled,
-      resetDemo, clearAll,
+      resetDemo, clearAll, hydrateFromCloud,
       saveCustomCategory, removeCustomCategory,
       deleteTarget, currencyPickerOpen,
       categoriesSheetOpen, categoriesSheetForCreate,

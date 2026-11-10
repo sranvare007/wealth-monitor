@@ -6,7 +6,10 @@ import {
 import * as Updates from 'expo-updates';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { useNavigation } from '@react-navigation/native';
 import { useAppState } from '../../store/AppContext';
+import { useAuth } from '../../store/AuthContext';
+import { useSync } from '../../store/SyncContext';
 import { useTheme } from '../../hooks/useTheme';
 import { Icon } from '../../components/common/Icon';
 import { AnimatedToggle } from '../../components/common/AnimatedToggle';
@@ -21,6 +24,17 @@ const ACCENT_NAMES: Record<AccentKey, string> = {
   indigo: 'Indigo', violet: 'Violet', emerald: 'Emerald', ocean: 'Ocean', sunset: 'Sunset',
 };
 
+function formatRelativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return 'just now';
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export function SettingsScreen() {
   const {
     assets, baseCurrency, accentKey, setAccentKey,
@@ -33,6 +47,9 @@ export function SettingsScreen() {
     customCategories, openCategoriesSheet,
   } = useAppState();
   const { theme, accent } = useTheme();
+  const navigation = useNavigation<any>(); // typed loosely so root-stack screens are reachable
+  const { status: authStatus, user, logout } = useAuth();
+  const { syncState, lastSyncedAt, syncNow, restoreNow } = useSync();
   const insets = useSafeAreaInsets();
   const bottomPad = 86 + Math.max(insets.bottom, 8) + 16;
 
@@ -169,6 +186,34 @@ export function SettingsScreen() {
     }
   }
 
+  function handleSignOut() {
+    Alert.alert(
+      'Sign out?',
+      'Your data stays on this device. You can sign back in any time to sync.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out', style: 'destructive', onPress: () => { logout().catch(() => {}); } },
+      ],
+    );
+  }
+
+  function handleRestore() {
+    Alert.alert(
+      'Restore from cloud?',
+      'This replaces the data on this device with your latest cloud backup. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Restore', style: 'destructive', onPress: restoreNow },
+      ],
+    );
+  }
+
+  const syncStatusLabel =
+    syncState === 'syncing' ? 'Syncing…'
+    : syncState === 'error' ? 'Sync failed — will retry'
+    : lastSyncedAt ? `Last synced ${formatRelativeTime(lastSyncedAt)}`
+    : 'Waiting to sync';
+
   function handleClearAll() {
     Alert.alert(
       'Clear all data?',
@@ -231,6 +276,67 @@ export function SettingsScreen() {
         contentContainerStyle={{ paddingBottom: bottomPad, paddingHorizontal: 16 }}
       >
         <Text style={[styles.title, { color: theme.text }]}>Settings</Text>
+
+        {/* ── Account & Sync ────────────────────────────────────────────── */}
+        <Text style={[styles.sectionLabel, { color: theme.sub }]}>ACCOUNT &amp; SYNC</Text>
+        <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.line }]}>
+          {authStatus === 'authenticated' ? (
+            <>
+              <View style={[styles.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.line }]}>
+                <View style={[styles.acctAvatar, { backgroundColor: accent.solid + '1A' }]}>
+                  <Icon name="globe" size={18} color={accent.solid} strokeWidth={2.1} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.rowLabel, { color: theme.text }]} numberOfLines={1}>
+                    {user?.email ?? 'Signed in'}
+                  </Text>
+                  <View style={styles.syncStatusRow}>
+                    {syncState === 'syncing' && <ActivityIndicator size="small" color={theme.sub} />}
+                    {syncState === 'error' && <Icon name="info" size={13} color={theme.neg} strokeWidth={2.4} />}
+                    {syncState === 'idle' && lastSyncedAt && <Icon name="check" size={13} color={theme.pos} strokeWidth={2.6} />}
+                    <Text style={[styles.rowSubLabel, { color: syncState === 'error' ? theme.neg : theme.sub }]}>
+                      {syncStatusLabel}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={syncNow}
+                disabled={syncState === 'syncing'}
+                style={[styles.row, { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.line, opacity: syncState === 'syncing' ? 0.6 : 1 }]}
+                accessibilityRole="button"
+                accessibilityLabel="Back up now"
+              >
+                <Icon name="bolt" size={18} color={theme.sub} strokeWidth={2.1} />
+                <Text style={[styles.rowLabel, { color: theme.text }]}>Back up now</Text>
+                <Icon name="chevR" size={16} color={theme.faint} strokeWidth={2.2} />
+              </TouchableOpacity>
+
+              <Row label="Restore from cloud" onPress={handleRestore} />
+              <Row label="Sign out" onPress={handleSignOut} danger last />
+            </>
+          ) : (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Auth')}
+              disabled={authStatus === 'loading'}
+              style={[styles.row, { borderBottomWidth: 0 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in to back up and sync"
+            >
+              <View style={[styles.acctAvatar, { backgroundColor: accent.solid + '1A' }]}>
+                <Icon name="globe" size={18} color={accent.solid} strokeWidth={2.1} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowLabel, { color: theme.text }]}>Back up &amp; sync</Text>
+                <Text style={[styles.rowSubLabel, { color: theme.sub }]}>
+                  Sign in to securely back up your data to the cloud
+                </Text>
+              </View>
+              <Icon name="chevR" size={16} color={theme.faint} strokeWidth={2.2} />
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* ── Appearance ────────────────────────────────────────────────── */}
         <Text style={[styles.sectionLabel, { color: theme.sub }]}>APPEARANCE</Text>
@@ -437,7 +543,7 @@ export function SettingsScreen() {
         <View style={styles.privacyRow}>
           <Icon name="lock" size={17} color={theme.sub} strokeWidth={2} />
           <Text style={[styles.privacyText, { color: theme.sub }]}>
-            All data is stored only on this device. Nothing is uploaded — no account, no cloud, no tracking. Values are updated manually by you.
+            Your data is stored locally and works fully offline. Cloud backup is optional — it only syncs when you sign in, and nothing is shared with third parties or used for tracking.
           </Text>
         </View>
         <Text style={[styles.version, { color: theme.faint }]}>WealthMonitor · v1.0</Text>
@@ -455,6 +561,9 @@ const styles = StyleSheet.create({
   rowLabel:    { flex: 1, fontSize: 15.5, fontFamily: FONTS.jakartaSemiBold },
   rowSubLabel: { fontSize: 12.5, fontFamily: FONTS.jakarta, marginTop: 2 },
   rowDetail:   { fontSize: 15, fontFamily: FONTS.groteskSemiBold },
+
+  acctAvatar:    { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  syncStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
 
   themeRow:   { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   accentName: { fontSize: 14, fontFamily: FONTS.jakartaBold },

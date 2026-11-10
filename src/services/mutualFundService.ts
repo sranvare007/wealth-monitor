@@ -1,6 +1,7 @@
+import { API_BASE_URL } from './api';
 import { fetchWithRetry } from '../utils/fetchWithRetry';
 
-const BASE = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/mutual-funds';
+const BASE = `${API_BASE_URL}/mutual-funds`;
 
 export type MFSearchResult = {
   schemeCode: number;

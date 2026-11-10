@@ -57,3 +57,7 @@ export async function deleteCustomCategory(
 ): Promise<void> {
   await db.runAsync('DELETE FROM custom_categories WHERE id = ?', [id]);
 }
+
+export async function clearCustomCategories(db: SQLiteDatabase): Promise<void> {
+  await db.runAsync('DELETE FROM custom_categories');
+}

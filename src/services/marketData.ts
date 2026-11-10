@@ -2,6 +2,7 @@
 // Placeholder price book — static seed data so the app works offline.
 // Gold rates are fetched live; see goldPriceService.ts.
 
+import { API_BASE_URL } from './api';
 import { getLiveGoldRates } from './goldPriceService';
 
 export type StockInfo = {
@@ -93,7 +94,7 @@ export function getCryptoQuote(symbol: string): { price: number; changePct: numb
 
 // ── Stock APIs ────────────────────────────────────────────────────────────────
 
-const INSTRUMENTS_BASE = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/instruments';
+const INSTRUMENTS_BASE = `${API_BASE_URL}/instruments`;
 
 type LTPQuote = {
   instrumentKey: string;

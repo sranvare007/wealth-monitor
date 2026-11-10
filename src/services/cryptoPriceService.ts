@@ -1,6 +1,7 @@
+import { API_BASE_URL } from './api';
 import { fetchWithRetry } from '../utils/fetchWithRetry';
 
-const CRYPTO_PRICE_URL = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/crypto/price';
+const CRYPTO_PRICE_URL = `${API_BASE_URL}/crypto/price`;
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 

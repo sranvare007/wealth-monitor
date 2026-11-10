@@ -1,9 +1,10 @@
+import { API_BASE_URL } from './api';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { fetchWithRetry } from '../utils/fetchWithRetry';
 import { getCachedRates, setCachedRates } from '../db/queries/exchange_rates';
 
 const EXCHANGE_RATES_URL =
-  'https://wealth-monitor-backend-production.up.railway.app/api/v1/exchange-rates';
+  `${API_BASE_URL}/exchange-rates`;
 
 type ApiResponse = {
   success: boolean;

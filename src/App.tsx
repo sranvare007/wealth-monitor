@@ -7,6 +7,8 @@ import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DatabaseProvider } from './db/DatabaseContext';
 import { AppProvider } from './store/AppContext';
+import { AuthProvider } from './store/AuthContext';
+import { SyncProvider } from './store/SyncContext';
 import { ToastProvider } from './store/ToastContext';
 import { Navigation } from './navigation';
 import { AppOverlays } from './components/common/AppOverlays';
@@ -97,11 +99,15 @@ export function App() {
   return (
     <SafeAreaProvider>
       <DatabaseProvider>
-        <AppProvider>
-          <ToastProvider>
-            <AppShell fontsLoaded={fontsLoaded} />
-          </ToastProvider>
-        </AppProvider>
+        <AuthProvider>
+          <AppProvider>
+            <SyncProvider>
+              <ToastProvider>
+                <AppShell fontsLoaded={fontsLoaded} />
+              </ToastProvider>
+            </SyncProvider>
+          </AppProvider>
+        </AuthProvider>
       </DatabaseProvider>
     </SafeAreaProvider>
   );

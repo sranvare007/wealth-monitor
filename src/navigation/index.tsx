@@ -2,6 +2,7 @@ import { createStaticNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { MainTabs } from './MainTabs';
 import { AddEditScreen } from './screens/AddEditScreen';
+import { AuthScreen } from './screens/AuthScreen';
 
 const RootStack = createNativeStackNavigator({
   screenOptions: { headerShown: false },
@@ -15,6 +16,14 @@ const RootStack = createNativeStackNavigator({
         presentation: 'modal',
         headerShown: false,
         // Match the sheet's corner radius feel on Android
+        animation: 'slide_from_bottom',
+      },
+    },
+    Auth: {
+      screen: AuthScreen,
+      options: {
+        presentation: 'modal',
+        headerShown: false,
         animation: 'slide_from_bottom',
       },
     },

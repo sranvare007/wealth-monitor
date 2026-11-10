@@ -1,8 +1,9 @@
+import { API_BASE_URL } from './api';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { fetchWithRetry } from '../utils/fetchWithRetry';
 import { getCryptoCount, bulkInsertCryptos, type CryptoInfoRow } from '../db/queries/crypto_info';
 
-const CRYPTO_API_URL = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/crypto';
+const CRYPTO_API_URL = `${API_BASE_URL}/crypto`;
 
 type RawQuote = {
   price: number;

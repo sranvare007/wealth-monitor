@@ -1,6 +1,7 @@
+import { API_BASE_URL } from './api';
 import { fetchWithRetry } from '../utils/fetchWithRetry';
 
-const LTP_URL = 'https://wealth-monitor-backend-production.up.railway.app/api/v1/instruments/ltp';
+const LTP_URL = `${API_BASE_URL}/instruments/ltp`;
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
